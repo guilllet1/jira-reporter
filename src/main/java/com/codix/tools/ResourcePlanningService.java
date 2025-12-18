@@ -27,34 +27,7 @@ public class ResourcePlanningService {
     public static final Map<String, String> TARGET_USERS = new LinkedHashMap<>();
     static {
         TARGET_USERS.put("amirchev", "Aleksandar Mirchev");
-        TARGET_USERS.put("amakki", "Amal Makki");
-        TARGET_USERS.put("angeorgieva", "Anelia Georgieva");
-        TARGET_USERS.put("eveli", "Emel Veli");
-        TARGET_USERS.put("fsouab", "Farah Souab");
-        TARGET_USERS.put("iatanasov", "Ivan Atanasov");
-        TARGET_USERS.put("ikolchev", "Ivan Kolchev");
-        TARGET_USERS.put("kmateeva", "Katya Mateeva");
-        TARGET_USERS.put("msamareva", "Maria Samareva");
-        TARGET_USERS.put("mniklenov", "Mihail Niklenov");
-        TARGET_USERS.put("mmrabet", "Myriam Mrabet");
-        TARGET_USERS.put("rgospodinova", "Ralitsa Gospodinova");
-        TARGET_USERS.put("valmaleh", "Valeri Almaleh");
-        TARGET_USERS.put("ayacoub", "Amal Yacoub");
-        TARGET_USERS.put("atsirov", "Atanas Tsirov");
-        TARGET_USERS.put("bnouaji", "Bilel Nouaji");
-        TARGET_USERS.put("kslavchova", "Kameliya Slavchova");
-        TARGET_USERS.put("kkomitov", "Kamen Komitov");
-        TARGET_USERS.put("kbachvarova", "Katerina Bachvarova");
-        TARGET_USERS.put("mdaaji", "Moez Daaji");
-        TARGET_USERS.put("mhadji", "Mohamed Aymen Hadji");
-        TARGET_USERS.put("ndelbecq", "Nicolas Delbecq");
-        TARGET_USERS.put("rbensalem", "Riadh Ben Salem");
-        TARGET_USERS.put("rtkhayat", "Rym Ben Tkhayat");
-        TARGET_USERS.put("sabbassi", "Saber Abbassi");
-        TARGET_USERS.put("sbraham", "Slim Haj Braham");
-        TARGET_USERS.put("vrobert", "Valérie Robert");
-        TARGET_USERS.put("wfadhloun", "Wafa Ben Fadhloun");
-        TARGET_USERS.put("ypetrov", "Yordan Petrov");
+
     }
 
     public ResourcePlanningService(String jiraUrl, String token) {
@@ -85,7 +58,7 @@ public class ResourcePlanningService {
         String endStr = endW.format(JIRA_DATE_FMT);
         String startPrevStr = startPrev.format(JIRA_DATE_FMT);
         String endPrevStr = endPrev.format(JIRA_DATE_FMT);
-
+        
         // 1. Nouveaux tickets assignés à Codix cette semaine (WEB)
         String jqlWebCurrent = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\"";
         String jqlWebPrev = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startPrevStr + "\"";
@@ -103,23 +76,32 @@ public class ResourcePlanningService {
         kpis.closed.current = getCount(jqlClosedCurrent);
         kpis.closed.previous = getCount(jqlClosedPrev);
 
-        // 4. Stock actuel assigné à Codix (JQL demandé par l'utilisateur)
-        // Courant : project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ
+        // 4. Stock actuel assigné à Codix (S et S-1)
         String jqlStockCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ";
-        // Précédent (Dimanche dernier) : On adapte le JQL pour le passé
         String jqlStockPrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ";
         kpis.stockGlobal.current = getCount(jqlStockCurrent);
         kpis.stockGlobal.previous = getCount(jqlStockPrev);
 
-        // 5. % Stale
-        double totalStock = kpis.stockGlobal.current;
-        if (totalStock > 0) {
-            // On reprend le JQL du stock courant et on ajoute la clause de date
-            String jqlStale = "project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ AND updated <= -5d";
-            double staleCount = getCount(jqlStale);
-            kpis.stalePercent.current = (staleCount / totalStock) * 100.0;
-            kpis.stalePercent.previous = kpis.stalePercent.current; 
+        // 5. % Stale (Sans réponse > 5j ouvrés)
+        // Valeur Courante (S)
+        if (kpis.stockGlobal.current > 0) {
+            String jqlStaleCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND \"Reopened/Updated by Client\" < -8d AND type != CRQ";
+            double staleCountCurrent = getCount(jqlStaleCurrent);
+            kpis.stalePercent.current = (staleCountCurrent / kpis.stockGlobal.current) * 100.0;
         }
+
+        // Valeur Précédente (S-1 au dimanche soir)
+        if (kpis.stockGlobal.previous > 0) {
+            // On calcule la date limite à S-1 (Date du dimanche S-1 moins 8 jours)
+            String staleLimitPrevStr = endPrev.minusDays(8).format(JIRA_DATE_FMT);
+            String jqlStalePrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" " +
+                                  "AND \"Reopened/Updated by Client\" <= \"" + staleLimitPrevStr + "\" AND type != CRQ";
+            
+            double staleCountPrev = getCount(jqlStalePrev);
+            // Calcul du pourcentage : (Stock Sans réponse S-1 / Stock total S-1) * 100
+            kpis.stalePercent.previous = (staleCountPrev / kpis.stockGlobal.previous) * 100.0;
+        }
+        
         return kpis;
     }
 
