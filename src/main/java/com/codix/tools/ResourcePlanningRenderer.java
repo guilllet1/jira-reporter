@@ -124,8 +124,8 @@ public class ResourcePlanningRenderer {
         html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Time spent on LOCAM (Jours/Homme)</th>");
         html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Number of DEV + WEB tickets assigned</th>");
         html.append("</tr><tr>");
-        for (Integer w : data.weeks) html.append("<th class='sep-border'>S").append(w).append("</th>");
-        for (Integer w : data.weeks) html.append("<th class='sep-border'>S").append(w).append("</th>");
+        for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
+        for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
         html.append("</tr></thead><tbody>");
 
         for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
