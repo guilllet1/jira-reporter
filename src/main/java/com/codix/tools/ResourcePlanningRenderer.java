@@ -11,18 +11,26 @@ public class ResourcePlanningRenderer {
     private static final String COL_RED_CODIX = "#CC325A";
     private static final String COL_GREEN = "#27ae60";
     private static final String COL_RED_KPI = "#e74c3c";
+    private static final String COL_OUTLOOK = "#0078d4";
 
     public void generate(ResourcePlanningService.ReportData data, String filename) {
         StringBuilder html = new StringBuilder();
         String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
 
         html.append("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'>");
+        // Inclusion de html2canvas pour la capture d'écran
+        html.append("<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>");
         html.append("<link href='https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap' rel='stylesheet'>");
         html.append("<style>");
         html.append("body { font-family: 'Open Sans', sans-serif; background-color: #f4f7f6; padding: 20px; color: #333; margin: 0; }");
         html.append(".container { max-width: 1800px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }");
         
-        html.append("h1 { color: ").append(COL_BLUE).append("; border-left: 6px solid ").append(COL_RED_CODIX).append("; padding-left: 15px; margin-top: 0; margin-bottom: 5px; font-size: 24px; }");
+        html.append(".header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }");
+        html.append("h1 { color: ").append(COL_BLUE).append("; border-left: 6px solid ").append(COL_RED_CODIX).append("; padding-left: 15px; margin: 0; font-size: 24px; }");
+        
+        html.append(".email-btn { background-color: ").append(COL_OUTLOOK).append("; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background 0.3s; font-size: 14px; }");
+        html.append(".email-btn:hover { background-color: #005a9e; }");
+
         html.append(".meta { text-align:right; color:#888; font-size:12px; margin-bottom: 25px; }");
 
         html.append(".dashboard { display: flex; gap: 20px; margin-bottom: 40px; justify-content: space-between; }");
@@ -44,13 +52,45 @@ public class ResourcePlanningRenderer {
         
         html.append("</style></head><body>");
         html.append("<div class='container'>");
+        
+        // Header avec bouton (Exclu de la capture)
+        html.append("<div class='header-row'>");
         html.append("<h1>BT TEAM DASHBOARD FOR LOCAM</h1>");
+        html.append("<button class='email-btn' onclick='copyReportForEmail()'>📧 Copier pour Outlook</button>");
+        html.append("</div>");
+
+        // Zone à copier (Dashboard + Tableau)
+        html.append("<div id='capture-area' style='background:white; padding:15px; border-radius:8px;'>");
         html.append("<div class='meta'>Généré le : ").append(dateGeneration).append("</div>");
 
         appendDashboard(html, data.dashboard);
 
         html.append("<h2>Focus on BT Team Members</h2>");
         appendDetailTable(html, data.planning);
+        html.append("</div>"); // Fin capture-area
+
+        // Script de capture
+        html.append("<script>");
+        html.append("function copyReportForEmail() {");
+        html.append("  const btn = document.querySelector('.email-btn');");
+        html.append("  const originalText = btn.innerText;");
+        html.append("  btn.innerText = 'Capture en cours...';");
+        html.append("  html2canvas(document.getElementById('capture-area'), { scale: 2, useCORS: true, logging: false }).then(canvas => {");
+        html.append("    canvas.toBlob(blob => {");
+        html.append("      const item = new ClipboardItem({ 'image/png': blob });");
+        html.append("      navigator.clipboard.write([item]).then(() => {");
+        html.append("        btn.innerText = 'Copié !';");
+        html.append("        btn.style.backgroundColor = '#27ae60';");
+        html.append("        setTimeout(() => { btn.innerText = originalText; btn.style.backgroundColor = '").append(COL_OUTLOOK).append("'; }, 2000);");
+        html.append("      }).catch(err => {");
+        html.append("        console.error('Erreur :', err);");
+        html.append("        btn.innerText = 'Erreur';");
+        html.append("        setTimeout(() => { btn.innerText = originalText; }, 2000);");
+        html.append("      });");
+        html.append("    }, 'image/png');");
+        html.append("  });");
+        html.append("}");
+        html.append("</script>");
         
         html.append("</div></body></html>");
 
@@ -61,32 +101,19 @@ public class ResourcePlanningRenderer {
 
     private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis) {
         html.append("<div class='dashboard'>");
-
-        // 1. Nouveaux assignés (ex Stock Web)
         appendKpiCard(html, "New tickets assigned to Codix", kpis.stockWeb, false, false);
-
-        // 2. Réponses Codix
         appendKpiCard(html, "Answers sent to LOCAM", kpis.replies, true, false);
-
-        // 3. Tickets Fermés (DÉPLACÉ EN POSITION 3)
         appendKpiCard(html, "Tickets closed by LOCAM", kpis.closed, true, false);
-
-        // 4. Stock Global (DÉPLACÉ EN POSITION 4 + RENOMMÉ)
         appendKpiCard(html, "Number of tickets assigned to Codix", kpis.stockGlobal, false, false);
-
-        // 5. % Stale (RENOMMÉ)
         appendKpiCard(html, "% without answers > 7d", kpis.stalePercent, false, true);
-        
         html.append("</div>");
     }
 
     private void appendKpiCard(StringBuilder html, String title, ResourcePlanningService.KpiMetric metric, boolean higherIsBetter, boolean isPercent) {
         html.append("<div class='kpi-card'>");
         html.append("<div class='kpi-title'>").append(title).append("</div>");
-        
         String valStr = isPercent ? String.format("%.1f%%", metric.current) : String.format("%.0f", metric.current);
         html.append("<div class='kpi-value'>").append(valStr).append("</div>");
-        
         double diff = metric.current - metric.previous;
         String trendHtml;
         if (metric.previous == 0 && !isPercent) {
@@ -100,7 +127,6 @@ public class ResourcePlanningRenderer {
             String diffStr = isPercent ? String.format("%+.1f%%", diff) : String.format("%+.0f", diff);
             trendHtml = "<span class='" + classCss + "'>" + arrow + " " + diffStr + " vs S-1</span>";
         }
-        
         html.append("<div class='kpi-trend'>").append(trendHtml).append("</div>");
         html.append("</div>");
     }
@@ -130,6 +156,7 @@ public class ResourcePlanningRenderer {
 
         for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
             ResourcePlanningService.UserStats user = data.userStats.get(login);
+            if (user == null) continue;
             html.append("<tr>");
             html.append("<td class='row-name'>").append(user.fullName).append("</td>");
             for (int i = 0; i < data.weeks.size(); i++) {

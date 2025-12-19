@@ -33,6 +33,8 @@ public class JiraReportApp {
             // Tableau 1bis : Domaines Fonctionnels (Nouveau)
             Map<String, Map<String, Integer>> functionalStats = jiraService.getCurrentFunctionalStats(jql);
             
+            Map<String, Map<String, Integer>> themeStats = jiraService.getCurrentThemeStats(jql); // Nouveau
+            
             // Tableau 2 : Historique Général
             JiraService.HistoryData historyStats = jiraService.getHistoryMetrics(jql);
 
@@ -40,7 +42,7 @@ public class JiraReportApp {
             JiraService.CategoryHistoryData categoryStats = jiraService.getCodixCategoryHistory(jql);
 
             // 3. Génération du rendu (Passage des 4 datasets)
-            renderer.generate(domainStats, functionalStats, historyStats, categoryStats, props.getProperty("output.file"));
+            renderer.generate(domainStats, functionalStats, themeStats, historyStats, categoryStats, props.getProperty("output.file"));
 
             System.out.println("Succès ! Rapport généré : " + props.getProperty("output.file"));
 

@@ -22,7 +22,7 @@ public class ResourcePlanningService {
     private final String token;
     private final OkHttpClient client;
     private static final DateTimeFormatter JIRA_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private static final double SECONDS_IN_MD = 28800.0;
+    private static final double SECONDS_IN_MD = 25200.0;
 
     public static final Map<String, String> TARGET_USERS = new LinkedHashMap<>();
     static {

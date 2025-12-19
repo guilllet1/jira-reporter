@@ -12,10 +12,11 @@ public class HtmlRenderer {
     private static final String COL_GREEN = "#2ecc71"; 
 
     public void generate(Map<String, Map<String, Integer>> domainStats, 
-                         Map<String, Map<String, Integer>> functionalStats,
-                         JiraService.HistoryData history, 
-                         JiraService.CategoryHistoryData categoryHistory, 
-                         String filename) {
+                     Map<String, Map<String, Integer>> functionalStats,
+                     Map<String, Map<String, Integer>> themeStats, // Nouveau paramètre
+                     JiraService.HistoryData history, 
+                     JiraService.CategoryHistoryData categoryHistory, 
+                     String filename) {
         StringBuilder html = new StringBuilder();
         String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
         String dateFile = new SimpleDateFormat("yyyyMMdd").format(new Date());
@@ -123,7 +124,7 @@ public class HtmlRenderer {
         // 1. Domaine Classique (Horizontal)
         appendDomainTable(html, domainStats);
         html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
-        
+        appendThemeTable(html, themeStats); // Ajout du nouveau tableau
         // 2. Domaine Fonctionnel (VERTICAL - Transposé pour l'harmonie)
         appendFunctionalDomainTableVertical(html, functionalStats);
         html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
@@ -343,4 +344,37 @@ public class HtmlRenderer {
         int b = (int) (255 + (90 - 255) * ratio);
         return String.format("#%02x%02x%02x", r, g, b);
     }
+    
+    private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
+    html.append("<div class='table-wrapper'><h3>Répartition par Thème</h3>");
+    html.append("<table id='tab-theme'><thead><tr><th></th>");
+    for (String t : stats.keySet()) html.append("<th>").append(t).append("</th>");
+    html.append("<th>TOTAL</th></tr></thead><tbody>");
+    
+    int gtLocam=0, gtCodix=0, maxVal=0;
+    Map<String, Integer> colTotals = new HashMap<>();
+    for (String t : stats.keySet()) {
+        int l = stats.get(t).get("LOCAM"), c = stats.get(t).get("Codix");
+        gtLocam += l; gtCodix += c; colTotals.merge(t, l + c, Integer::sum);
+        maxVal = Math.max(maxVal, Math.max(l, c));
+    }
+
+    html.append("<tr><td class='row-header'>LOCAM</td>");
+    for (String t : stats.keySet()) html.append(cell(stats.get(t).get("LOCAM"), maxVal));
+    html.append("<td class='grand-total'>").append(gtLocam).append("</td></tr>");
+
+    html.append("<tr><td class='row-header'>Codix</td>");
+    for (String t : stats.keySet()) html.append(cell(stats.get(t).get("Codix"), maxVal));
+    html.append("<td class='grand-total'>").append(gtCodix).append("</td></tr>");
+
+    html.append("<tr class='total-row'><td class='row-header'>TOTAL</td>");
+    int finalTotal = 0;
+    int maxCol = colTotals.isEmpty() ? 0 : Collections.max(colTotals.values());
+    for(String t : stats.keySet()){ 
+        int val = colTotals.get(t); finalTotal += val; html.append(cell(val, maxCol)); 
+    }
+    html.append("<td class='grand-total'>").append(finalTotal).append("</td></tr>");
+    html.append("</tbody></table>");
+    html.append("<button id='btn-theme' class='copy-btn' onclick=\"copyTable('tab-theme', 'btn-theme')\">Copier</button></div>");
+}
 }
