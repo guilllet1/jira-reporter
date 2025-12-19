@@ -44,12 +44,12 @@ public class ResourcePlanningRenderer {
         
         html.append("</style></head><body>");
         html.append("<div class='container'>");
-        html.append("<h1>PLANNING & CHARGE - LOCAM</h1>");
+        html.append("<h1>BT TEAM DASHBOARD FOR LOCAM</h1>");
         html.append("<div class='meta'>Généré le : ").append(dateGeneration).append("</div>");
 
         appendDashboard(html, data.dashboard);
 
-        html.append("<h2>Détail Hebdomadaire par Collaborateur</h2>");
+        html.append("<h2>Focus on BT Team Members</h2>");
         appendDetailTable(html, data.planning);
         
         html.append("</div></body></html>");
@@ -63,19 +63,19 @@ public class ResourcePlanningRenderer {
         html.append("<div class='dashboard'>");
 
         // 1. Nouveaux assignés (ex Stock Web)
-        appendKpiCard(html, "Nouveaux tickets assignés à Codix cette semaine", kpis.stockWeb, false, false);
+        appendKpiCard(html, "New tickets assigned to Codix", kpis.stockWeb, false, false);
 
         // 2. Réponses Codix
-        appendKpiCard(html, "Réponses Codix (Semaine)", kpis.replies, true, false);
+        appendKpiCard(html, "Answers sent to LOCAM", kpis.replies, true, false);
 
         // 3. Tickets Fermés (DÉPLACÉ EN POSITION 3)
-        appendKpiCard(html, "Tickets Fermés cette semaine par LOCAM", kpis.closed, true, false);
+        appendKpiCard(html, "Tickets closed by LOCAM", kpis.closed, true, false);
 
         // 4. Stock Global (DÉPLACÉ EN POSITION 4 + RENOMMÉ)
-        appendKpiCard(html, "Stock actuel assigné à Codix", kpis.stockGlobal, false, false);
+        appendKpiCard(html, "Number of tickets assigned to Codix", kpis.stockGlobal, false, false);
 
         // 5. % Stale (RENOMMÉ)
-        appendKpiCard(html, "% Sans réponse > 5j ouvrés", kpis.stalePercent, false, true);
+        appendKpiCard(html, "% without answers > 7d", kpis.stalePercent, false, true);
         
         html.append("</div>");
     }
@@ -122,7 +122,7 @@ public class ResourcePlanningRenderer {
         html.append("<table><thead><tr>");
         html.append("<th rowspan='2' style='background:white; border:none;'></th>");
         html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Time spent on LOCAM (Jours/Homme)</th>");
-        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Number of tasks + tickets assigned</th>");
+        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Number of DEV + WEB tickets assigned</th>");
         html.append("</tr><tr>");
         for (Integer w : data.weeks) html.append("<th class='sep-border'>S").append(w).append("</th>");
         for (Integer w : data.weeks) html.append("<th class='sep-border'>S").append(w).append("</th>");

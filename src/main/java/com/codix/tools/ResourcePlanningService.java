@@ -27,7 +27,34 @@ public class ResourcePlanningService {
     public static final Map<String, String> TARGET_USERS = new LinkedHashMap<>();
     static {
         TARGET_USERS.put("amirchev", "Aleksandar Mirchev");
-
+        TARGET_USERS.put("amakki", "Amal Makki");
+        TARGET_USERS.put("angeorgieva", "Anelia Georgieva");
+        TARGET_USERS.put("eveli", "Emel Veli");
+        TARGET_USERS.put("fsouab", "Farah Souab");
+        TARGET_USERS.put("iatanasov", "Ivan Atanasov");
+        TARGET_USERS.put("ikolchev", "Ivan Kolchev");
+        TARGET_USERS.put("kmateeva", "Katya Mateeva");
+        TARGET_USERS.put("msamareva", "Maria Samareva");
+        TARGET_USERS.put("mniklenov", "Mihail Niklenov");
+        TARGET_USERS.put("mmrabet", "Myriam Mrabet");
+        TARGET_USERS.put("rgospodinova", "Ralitsa Gospodinova");
+        TARGET_USERS.put("valmaleh", "Valeri Almaleh");
+        TARGET_USERS.put("ayacoub", "Amal Yacoub");
+        TARGET_USERS.put("atsirov", "Atanas Tsirov");
+        TARGET_USERS.put("bnouaji", "Bilel Nouaji");
+        TARGET_USERS.put("kslavchova", "Kameliya Slavchova");
+        TARGET_USERS.put("kkomitov", "Kamen Komitov");
+        TARGET_USERS.put("kbachvarova", "Katerina Bachvarova");
+        TARGET_USERS.put("mdaaji", "Moez Daaji");
+        TARGET_USERS.put("mhadji", "Mohamed Aymen Hadji");
+        TARGET_USERS.put("ndelbecq", "Nicolas Delbecq");
+        TARGET_USERS.put("rbensalem", "Riadh Ben Salem");
+        TARGET_USERS.put("rtkhayat", "Rym Ben Tkhayat");
+        TARGET_USERS.put("sabbassi", "Saber Abbassi");
+        TARGET_USERS.put("sbraham", "Slim Haj Braham");
+        TARGET_USERS.put("vrobert", "Valérie Robert");
+        TARGET_USERS.put("wfadhloun", "Wafa Ben Fadhloun");
+        TARGET_USERS.put("ypetrov", "Yordan Petrov");
     }
 
     public ResourcePlanningService(String jiraUrl, String token) {
@@ -58,7 +85,7 @@ public class ResourcePlanningService {
         String endStr = endW.format(JIRA_DATE_FMT);
         String startPrevStr = startPrev.format(JIRA_DATE_FMT);
         String endPrevStr = endPrev.format(JIRA_DATE_FMT);
-        
+
         // 1. Nouveaux tickets assignés à Codix cette semaine (WEB)
         String jqlWebCurrent = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\"";
         String jqlWebPrev = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startPrevStr + "\"";
