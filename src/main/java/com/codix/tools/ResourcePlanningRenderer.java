@@ -168,10 +168,10 @@ public class ResourcePlanningRenderer {
     private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis) {
         html.append("<div class='dashboard'>");
         appendKpiCard(html, "New tickets assigned to Codix", kpis.stockWeb, false, false);
-        appendKpiCard(html, "Answers sent to LOCAM", kpis.replies, true, false);
+        appendKpiCard(html, "Answers sent from Codix to LOCAM", kpis.replies, true, false);
         appendKpiCard(html, "Tickets closed by LOCAM", kpis.closed, true, false);
-        appendKpiCard(html, "Number of tickets assigned to Codix", kpis.stockGlobal, false, false);
-        appendKpiCard(html, "% without answers > 7d", kpis.stalePercent, false, true);
+        appendKpiCard(html, "Number of web tickets assigned to BTTEAM", kpis.stockGlobal, false, false);
+        appendKpiCard(html, "% without answers > 7d assigned to BTTEAM", kpis.stalePercent, false, true);
         html.append("</div>");
     }
 

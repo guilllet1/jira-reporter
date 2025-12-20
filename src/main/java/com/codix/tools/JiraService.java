@@ -21,11 +21,12 @@ public class JiraService {
     private final String jiraUrl;
     private final String token;
     private final OkHttpClient client;
-    
+
     private static final DateTimeFormatter JIRA_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    
+
     // 1. MAPPING DOMAINES (Existant)
     private static final Map<String, String> THEME_MAPPING = new HashMap<>();
+
     static {
         THEME_MAPPING.put("AD", "BI");
         THEME_MAPPING.put("ELLISPHERE", "IT");
@@ -57,6 +58,7 @@ public class JiraService {
 
     // 2. NOUVEAU MAPPING FONCTIONNEL
     private static final Map<String, String> FUNCTIONAL_MAPPING = new HashMap<>();
+
     static {
         FUNCTIONAL_MAPPING.put("AD", "BI");
         FUNCTIONAL_MAPPING.put("ELLISPHERE", "INTERFACE");
@@ -87,7 +89,7 @@ public class JiraService {
     }
 
     public static final List<String> CODIX_CATEGORIES = Arrays.asList(
-            "Action Point", "Assistance", "Adjustment", "Defect", 
+            "Action Point", "Assistance", "Adjustment", "Defect",
             "Evolution", "Incident", "Information", "Question", "Under Classification"
     );
 
@@ -128,40 +130,68 @@ public class JiraService {
         return getStatsByMapping(baseJql, FUNCTIONAL_MAPPING);
     }
 
-    // Méthode générique pour calculer la répartition selon une Map donnée
     private Map<String, Map<String, Integer>> getStatsByMapping(String baseJql, Map<String, String> mapping) throws IOException {
         JSONObject searchResult = searchJira(baseJql, 1000, null);
         Map<String, Map<String, Integer>> stats = new TreeMap<>();
-        
-        // Initialisation des clés
+
+        // Initialisation des thèmes existants dans le mapping
         for (String val : new TreeSet<>(mapping.values())) {
-            stats.put(val, new HashMap<>());
-            stats.get(val).put("LOCAM", 0);
-            stats.get(val).put("Codix", 0);
+            stats.put(val, createActorMap());
+        }
+        // Ajout d'une catégorie "AUTRES" pour pointer les tickets sans thème (différences)
+        stats.put("AUTRES", createActorMap());
+
+        if (searchResult == null) {
+            return stats;
         }
 
-        if (searchResult == null) return stats;
+        // Statuts à exclure selon ta demande
+        List<String> excluded = Arrays.asList("Closed", "Cancel", "Pending");
 
         JSONArray issues = searchResult.getJSONArray("issues");
         for (int i = 0; i < issues.length(); i++) {
-            JSONObject issue = issues.getJSONObject(i);
-            JSONObject fields = issue.getJSONObject("fields");
+            JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
             String status = fields.getJSONObject("status").getString("name");
-            JSONArray labelsJson = fields.optJSONArray("labels");
 
-            // On utilise le mapping passé en paramètre
+            // 1. Filtrage des statuts exclus
+            boolean isExcluded = false;
+            for (String s : excluded) {
+                if (s.equalsIgnoreCase(status)) {
+                    isExcluded = true;
+                    break;
+                }
+            }
+            if (isExcluded) {
+                continue;
+            }
+
+            // 2. Identification du thème
+            JSONArray labelsJson = fields.optJSONArray("labels");
             String categoryFound = identifyCategory(labelsJson, mapping);
-            
-            if (categoryFound != null) {
-                Map<String, Integer> ds = stats.get(categoryFound);
+
+            // Si aucun label de thème n'est trouvé, on utilise "AUTRES"
+            if (categoryFound == null) {
+                categoryFound = "AUTRES";
+            }
+
+            Map<String, Integer> ds = stats.get(categoryFound);
+            if (ds != null) {
                 if ("Replied by CODIX".equalsIgnoreCase(status)) {
                     ds.put("LOCAM", ds.get("LOCAM") + 1);
-                } else if ("Open".equalsIgnoreCase(status) || "Reopened".equalsIgnoreCase(status)) {
+                } else {
                     ds.put("Codix", ds.get("Codix") + 1);
                 }
             }
         }
         return stats;
+    }
+
+// Helper pour initialiser la structure
+    private Map<String, Integer> createActorMap() {
+        Map<String, Integer> m = new HashMap<>();
+        m.put("LOCAM", 0);
+        m.put("Codix", 0);
+        return m;
     }
 
     public HistoryData getHistoryMetrics(String baseJql) {
@@ -170,22 +200,40 @@ public class JiraService {
         List<String> weekLabels = new ArrayList<>();
         List<Integer> weekOrder = new ArrayList<>();
         LocalDate today = LocalDate.now();
-        String coreJql = "project = LOCAMWEB AND labels = MEP2 AND type != CRQ"; 
+
+        String scopeJql = "project = LOCAMWEB AND labels = MEP2 AND type != CRQ";
+        String excludedStats = "(Closed, Cancel, Pending)";
 
         for (int i = 7; i >= 0; i--) {
             LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
             LocalDate startOfWeek = endOfWeek.minusDays(6);
             int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+
             weekLabels.add("S" + weekNum);
             weekOrder.add(weekNum);
-            weeklyStats.put(weekNum, new HashMap<>());
+
+            Map<MetricType, Integer> stats = new HashMap<>();
             String startStr = startOfWeek.format(JIRA_DATE_FMT);
             String endStr = endOfWeek.format(JIRA_DATE_FMT);
+            // Le snapshot se fait au lundi matin 00h00 pour inclure tout le dimanche
+            String snapshotDate = endOfWeek.plusDays(1).format(JIRA_DATE_FMT);
 
-            weeklyStats.get(weekNum).put(MetricType.STOCK, getCount(coreJql + " AND status was in (Open, Reopened, \"Replied by CODIX\") ON \"" + endStr + "\""));
-            weeklyStats.get(weekNum).put(MetricType.CREATED, getCount(coreJql + " AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\""));
-            weeklyStats.get(weekNum).put(MetricType.CLOSED, getCount(coreJql + " AND \"Codix reply\" is not EMPTY AND status changed to Closed DURING (\"" + startStr + "\", \"" + endStr + "\")"));
-            weeklyStats.get(weekNum).put(MetricType.DELIVERED, countDeliveredViaChangelog(coreJql, startOfWeek, endOfWeek));
+            String jqlStock;
+            if (!endOfWeek.isBefore(today)) {
+                // Semaine en cours : Recherche temps réel
+                jqlStock = scopeJql + " AND status NOT IN " + excludedStats;
+            } else {
+                // Semaines passées : Snapshot + Condition sur la date de création
+                jqlStock = scopeJql + " AND status WAS NOT IN " + excludedStats
+                        + " ON \"" + snapshotDate + "\" AND created < \"" + snapshotDate + "\"";
+            }
+
+            stats.put(MetricType.STOCK, getCount(jqlStock));
+            stats.put(MetricType.CREATED, getCount(scopeJql + " AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\""));
+            stats.put(MetricType.CLOSED, getCount(scopeJql + " AND \"Codix reply\" is not EMPTY AND status changed to Closed DURING (\"" + startStr + "\", \"" + endStr + "\")"));
+            stats.put(MetricType.DELIVERED, countDeliveredViaChangelog(scopeJql, startOfWeek, endOfWeek));
+
+            weeklyStats.put(weekNum, stats);
             System.out.print(".");
         }
         System.out.println("\nCalculs globaux terminés.");
@@ -198,26 +246,35 @@ public class JiraService {
         List<String> weekLabels = new ArrayList<>();
         List<Integer> weekOrder = new ArrayList<>();
         LocalDate today = LocalDate.now();
+
         String scopeJql = "project = LOCAMWEB AND labels = MEP2 AND type != CRQ";
+        String excludedStats = "(Closed, Cancel, Pending)";
 
         for (int i = 7; i >= 0; i--) {
             LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
             int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+
             weekLabels.add("S" + weekNum);
             weekOrder.add(weekNum);
-            weeklyCatStats.put(weekNum, new HashMap<>());
-            String endStr = endOfWeek.format(JIRA_DATE_FMT);
-            String stockAtDateJql = scopeJql + " AND status was in (Open, Reopened, \"Replied by CODIX\") ON \"" + endStr + "\"";
 
-            for (String category : CODIX_CATEGORIES) {
-                String finalJql;
-                if ("Under Classification".equals(category)) {
-                    finalJql = stockAtDateJql + " AND (\"Codix Category\" is EMPTY OR \"Codix Category\" = \"Under Classification\")";
-                } else {
-                    finalJql = stockAtDateJql + " AND \"Codix Category\" = \"" + category + "\"";
-                }
-                weeklyCatStats.get(weekNum).put(category, getCount(finalJql));
+            String snapshotDate = endOfWeek.plusDays(1).format(JIRA_DATE_FMT);
+
+            String stockAtDateJql;
+            if (!endOfWeek.isBefore(today)) {
+                stockAtDateJql = scopeJql + " AND status NOT IN " + excludedStats;
+            } else {
+                stockAtDateJql = scopeJql + " AND status WAS NOT IN " + excludedStats
+                        + " ON \"" + snapshotDate + "\" AND created < \"" + snapshotDate + "\"";
             }
+
+            Map<String, Integer> catStats = new HashMap<>();
+            for (String category : CODIX_CATEGORIES) {
+                String finalJql = "Under Classification".equals(category)
+                        ? stockAtDateJql + " AND (\"Codix Category\" is EMPTY OR \"Codix Category\" = \"Under Classification\")"
+                        : stockAtDateJql + " AND \"Codix Category\" = \"" + category + "\"";
+                catStats.put(category, getCount(finalJql));
+            }
+            weeklyCatStats.put(weekNum, catStats);
             System.out.print(".");
         }
         System.out.println("\nCalculs catégories terminés.");
@@ -229,7 +286,9 @@ public class JiraService {
         try {
             String jql = coreJql + " AND updated >= \"" + start.format(JIRA_DATE_FMT) + "\" AND updated <= \"" + end.format(JIRA_DATE_FMT) + "\"";
             JSONObject result = searchJira(jql, 1000, "changelog");
-            if (result == null) return 0;
+            if (result == null) {
+                return 0;
+            }
 
             JSONArray issues = result.getJSONArray("issues");
             LocalDateTime startDt = start.atStartOfDay();
@@ -237,8 +296,10 @@ public class JiraService {
 
             for (int i = 0; i < issues.length(); i++) {
                 JSONObject issue = issues.getJSONObject(i);
-                if (!issue.has("changelog")) continue;
-                
+                if (!issue.has("changelog")) {
+                    continue;
+                }
+
                 JSONArray histories = issue.getJSONObject("changelog").getJSONArray("histories");
                 boolean delivered = false;
 
@@ -248,7 +309,9 @@ public class JiraService {
                     LocalDateTime changeDate;
                     try {
                         changeDate = LocalDateTime.parse(createdStr, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"));
-                    } catch (Exception ex) { continue; }
+                    } catch (Exception ex) {
+                        continue;
+                    }
 
                     if (changeDate.isAfter(startDt) && changeDate.isBefore(endDt)) {
                         JSONArray items = history.getJSONArray("items");
@@ -262,11 +325,17 @@ public class JiraService {
                             }
                         }
                     }
-                    if (delivered) break;
+                    if (delivered) {
+                        break;
+                    }
                 }
-                if (delivered) count++;
+                if (delivered) {
+                    count++;
+                }
             }
-        } catch (Exception e) { System.err.println("Err Changelog: " + e.getMessage()); }
+        } catch (Exception e) {
+            System.err.println("Err Changelog: " + e.getMessage());
+        }
         return count;
     }
 
@@ -274,53 +343,73 @@ public class JiraService {
         try {
             JSONObject json = searchJira(jql, 0, null);
             return json != null ? json.getInt("total") : 0;
-        } catch (Exception e) { return 0; }
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private JSONObject searchJira(String jql, int maxResults, String expand) throws IOException {
         String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) + "&maxResults=" + maxResults + "&fields=status,labels";
-        if (expand != null) url += "&expand=" + expand;
+        if (expand != null) {
+            url += "&expand=" + expand;
+        }
         Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).addHeader("Content-Type", "application/json").build();
         try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) return null;
+            if (!response.isSuccessful()) {
+                return null;
+            }
             return new JSONObject(response.body().string());
         }
     }
 
     // Identifie la catégorie selon le mapping fourni
     private String identifyCategory(JSONArray labels, Map<String, String> mapping) {
-        if (labels == null) return null;
+        if (labels == null) {
+            return null;
+        }
         for (int j = 0; j < labels.length(); j++) {
             String l = labels.getString(j);
-            if (mapping.containsKey(l)) return mapping.get(l);
+            if (mapping.containsKey(l)) {
+                return mapping.get(l);
+            }
         }
         return null;
     }
-    
+
     public static class HistoryData {
+
         public final Map<Integer, Map<MetricType, Integer>> stats;
         public final List<String> labels;
         public final List<Integer> order;
+
         public HistoryData(Map<Integer, Map<MetricType, Integer>> stats, List<String> labels, List<Integer> order) {
-            this.stats = stats; this.labels = labels; this.order = order;
+            this.stats = stats;
+            this.labels = labels;
+            this.order = order;
         }
     }
 
     public static class CategoryHistoryData {
+
         public final Map<Integer, Map<String, Integer>> stats;
         public final List<String> labels;
         public final List<Integer> order;
+
         public CategoryHistoryData(Map<Integer, Map<String, Integer>> stats, List<String> labels, List<Integer> order) {
-            this.stats = stats; this.labels = labels; this.order = order;
+            this.stats = stats;
+            this.labels = labels;
+            this.order = order;
         }
     }
-    
+
     public Map<String, Map<String, Integer>> getCurrentThemeStats(String baseJql) throws IOException {
-    Map<String, String> themeMapping = new LinkedHashMap<>();
-    String[] themes = {"AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API", 
-                       "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4", 
-                       "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"};
-    for (String t : themes) themeMapping.put(t, t);
-    return getStatsByMapping(baseJql, themeMapping);
-}
+        Map<String, String> themeMapping = new LinkedHashMap<>();
+        String[] themes = {"AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API",
+            "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4",
+            "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"};
+        for (String t : themes) {
+            themeMapping.put(t, t);
+        }
+        return getStatsByMapping(baseJql, themeMapping);
+    }
 }

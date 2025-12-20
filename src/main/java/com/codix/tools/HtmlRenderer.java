@@ -295,11 +295,13 @@ public class HtmlRenderer {
             html.append("<tr><td class='row-header'>").append(metric.label).append("</td>");
             Integer prev = null;
             for (Integer week : history.order) {
-                int curr = history.stats.get(week).get(metric);
+                Map<JiraService.MetricType, Integer> weekData = history.stats.get(week);
+                // On vérifie si la semaine existe ET si la métrique existe, sinon on met 0
+                int curr = (weekData != null) ? weekData.getOrDefault(metric, 0) : 0;
+                
                 html.append("<td>").append(curr).append(getTrendArrow(curr, prev, metric.higherIsBetter)).append("</td>");
                 prev = curr;
-            }
-            html.append("</tr>");
+            }            html.append("</tr>");
         }
         html.append("</tbody></table>");
         html.append("<button id='btn-history' class='copy-btn' onclick=\"copyTable('tab-history', 'btn-history')\">Copier</button></div>");

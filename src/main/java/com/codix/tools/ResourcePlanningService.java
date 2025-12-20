@@ -160,32 +160,32 @@ public class ResourcePlanningService {
         kpis.closed.current = getCount(jqlClosedCurrent);
         kpis.closed.previous = getCount(jqlClosedPrev);
 
-        // 4. Stock actuel assigné à Codix (S et S-1)
-        String jqlStockCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ";
-        String jqlStockPrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ";
+        // Préparation de la liste des utilisateurs pour le JQL
+        String userList = "\"" + String.join("\", \"", TARGET_USERS.keySet()) + "\"";
+
+        // 4. Stock actuel assigné à l'équipe (S et S-1)
+        String jqlStockCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ AND assignee IN (" + userList + ")";
+        String jqlStockPrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"";
         kpis.stockGlobal.current = getCount(jqlStockCurrent);
         kpis.stockGlobal.previous = getCount(jqlStockPrev);
 
-        // 5. % Stale (Sans réponse > 5j ouvrés)
-        // Valeur Courante (S)
+        // 5. % Stale (Sans réponse > 5j ouvrés) - Doit aussi être filtré par l'équipe
         if (kpis.stockGlobal.current > 0) {
-            String jqlStaleCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND \"Reopened/Updated by Client\" < -8d AND type != CRQ";
+            String jqlStaleCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND \"Reopened/Updated by Client\" < -8d AND type != CRQ AND assignee IN (" + userList + ")";
             double staleCountCurrent = getCount(jqlStaleCurrent);
             kpis.stalePercent.current = (staleCountCurrent / kpis.stockGlobal.current) * 100.0;
         }
 
-        // Valeur Précédente (S-1 au dimanche soir)
         if (kpis.stockGlobal.previous > 0) {
-            // On calcule la date limite à S-1 (Date du dimanche S-1 moins 8 jours)
             String staleLimitPrevStr = endPrev.minusDays(8).format(JIRA_DATE_FMT);
-            String jqlStalePrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" " +
-                                  "AND \"Reopened/Updated by Client\" <= \"" + staleLimitPrevStr + "\" AND type != CRQ";
-            
+            String jqlStalePrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" "
+                    + "AND \"Reopened/Updated by Client\" <= \"" + staleLimitPrevStr + "\" AND type != CRQ "
+                    + "AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"";
+
             double staleCountPrev = getCount(jqlStalePrev);
-            // Calcul du pourcentage : (Stock Sans réponse S-1 / Stock total S-1) * 100
             kpis.stalePercent.previous = (staleCountPrev / kpis.stockGlobal.previous) * 100.0;
         }
-        
+
         return kpis;
     }
 
