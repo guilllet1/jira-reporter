@@ -67,7 +67,64 @@ public class ResourcePlanningService {
         ReportData report = new ReportData();
         report.planning = getPlanningData(projectKeys, nbWeeks);
         report.dashboard = getDashboardMetrics(projectKeys);
+        try {
+            report.themeStats = getThemeStats(); // Ajouté
+        } catch (IOException e) {
+            e.printStackTrace();
+            report.themeStats = new LinkedHashMap<>();
+        }
         return report;
+    }
+    
+    // Nouvelle méthode pour les thèmes
+    private Map<String, Map<String, Integer>> getThemeStats() throws IOException {
+        System.out.println("Analyse du stock par thème (MEP1+MEP2)...");
+        String jql = "project = LOCAMWEB AND status in (Open, Reopened, \"Replied by CODIX\") AND type != CRQ";
+        String[] themes = {"AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API", 
+                           "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4", 
+                           "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"};
+        
+        Map<String, Map<String, Integer>> stats = new LinkedHashMap<>();
+        for (String t : themes) {
+            stats.put(t, new HashMap<>());
+            stats.get(t).put("LOCAM", 0);
+            stats.get(t).put("Codix", 0);
+        }
+
+        int startAt = 0;
+        int maxResults = 100;
+        int total = 0;
+
+        do {
+            JSONObject result = searchJira(jql, startAt, maxResults, null);
+            if (result == null) break;
+            total = result.getInt("total");
+            JSONArray issues = result.getJSONArray("issues");
+            
+            for (int i = 0; i < issues.length(); i++) {
+                JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
+                String status = fields.getJSONObject("status").getString("name");
+                JSONArray labels = fields.optJSONArray("labels");
+                
+                if (labels != null) {
+                    for (int j = 0; j < labels.length(); j++) {
+                        String label = labels.getString(j);
+                        if (stats.containsKey(label)) {
+                            Map<String, Integer> s = stats.get(label);
+                            if ("Replied by CODIX".equalsIgnoreCase(status)) {
+                                s.put("LOCAM", s.get("LOCAM") + 1);
+                            } else {
+                                s.put("Codix", s.get("Codix") + 1);
+                            }
+                            break; 
+                        }
+                    }
+                }
+            }
+            startAt += maxResults;
+        } while (startAt < total);
+
+        return stats;
     }
 
     // --- DASHBOARD (KPI) ---
@@ -268,8 +325,11 @@ public class ResourcePlanningService {
         } catch (Exception e) { return 0; }
     }
 
+    // Mise à jour de searchJira pour inclure "labels"
     private JSONObject searchJira(String jql, int startAt, int maxResults, String expand) throws IOException {
-        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) + "&startAt=" + startAt + "&maxResults=" + maxResults + "&fields=status,assignee,timespent";
+        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) 
+                   + "&startAt=" + startAt + "&maxResults=" + maxResults 
+                   + "&fields=status,assignee,timespent,labels"; // Ajout de labels ici
         if (expand != null) url += "&expand=" + expand;
         Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).addHeader("Content-Type", "application/json").build();
         try (Response response = client.newCall(request).execute()) {
@@ -277,8 +337,13 @@ public class ResourcePlanningService {
             return new JSONObject(response.body().string());
         }
     }
+    
 
-    public static class ReportData { public PlanningData planning; public DashboardMetrics dashboard; }
+    public static class ReportData { 
+        public PlanningData planning; 
+        public DashboardMetrics dashboard; 
+        public Map<String, Map<String, Integer>> themeStats; // Ajouté
+    }
     public static class DashboardMetrics { public KpiMetric stockWeb = new KpiMetric(); public KpiMetric replies = new KpiMetric(); public KpiMetric stockGlobal = new KpiMetric(); public KpiMetric closed = new KpiMetric(); public KpiMetric stalePercent = new KpiMetric(); }
     public static class KpiMetric { public double current; public double previous; }
     public static class WeekRange { public LocalDate start; public LocalDate end; public WeekRange(LocalDate s, LocalDate e) { this.start = s; this.end = e; } }
@@ -290,4 +355,6 @@ public class ResourcePlanningService {
         public void addTime(String login, int week, double days) { if (userStats.containsKey(login)) userStats.get(login).timePerWeek.merge(week, days, Double::sum); }
         public void setAssigned(String login, int week, int count) { if (userStats.containsKey(login)) userStats.get(login).assignedPerWeek.put(week, count); }
     }
+    
+    
 }

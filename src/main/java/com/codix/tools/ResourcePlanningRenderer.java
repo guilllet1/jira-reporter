@@ -24,10 +24,10 @@ public class ResourcePlanningRenderer {
         html.append("<style>");
         html.append("body { font-family: 'Open Sans', sans-serif; background-color: #f4f7f6; padding: 20px; color: #333; margin: 0; }");
         html.append(".container { max-width: 1800px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }");
-        
+
         html.append(".header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }");
         html.append("h1 { color: ").append(COL_BLUE).append("; border-left: 6px solid ").append(COL_RED_CODIX).append("; padding-left: 15px; margin: 0; font-size: 24px; }");
-        
+
         html.append(".email-btn { background-color: ").append(COL_OUTLOOK).append("; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background 0.3s; font-size: 14px; }");
         html.append(".email-btn:hover { background-color: #005a9e; }");
 
@@ -49,10 +49,10 @@ public class ResourcePlanningRenderer {
         html.append(".sep-border { border-left: 3px solid #555 !important; }");
         html.append(".row-name { text-align: left; font-weight: 700; color: ").append(COL_BLUE).append("; width: 220px; padding-left: 15px; background-color:#fff;}");
         html.append(".total-row td { font-weight: bold; background-color: #eee; border-top: 2px solid #333; }");
-        
+
         html.append("</style></head><body>");
         html.append("<div class='container'>");
-        
+
         // Header avec bouton (Exclu de la capture)
         html.append("<div class='header-row'>");
         html.append("<h1>BT TEAM DASHBOARD FOR LOCAM</h1>");
@@ -64,7 +64,10 @@ public class ResourcePlanningRenderer {
         html.append("<div class='meta'>Généré le : ").append(dateGeneration).append("</div>");
 
         appendDashboard(html, data.dashboard);
-
+        // --- AJOUT DU NOUVEAU TABLEAU ---
+        html.append("<h2>Number of tickets MEP1+MEP2 by theme</h2>");
+        appendThemeTable(html, data.themeStats);
+        // --------------------------------
         html.append("<h2>Focus on BT Team Members</h2>");
         appendDetailTable(html, data.planning);
         html.append("</div>"); // Fin capture-area
@@ -91,12 +94,75 @@ public class ResourcePlanningRenderer {
         html.append("  });");
         html.append("}");
         html.append("</script>");
-        
+
         html.append("</div></body></html>");
 
         try (FileWriter writer = new FileWriter(filename)) {
             writer.write(html.toString());
-        } catch (IOException e) { e.printStackTrace(); }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Nouvelle méthode de rendu du tableau par thème
+    private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
+        if (stats == null || stats.isEmpty()) {
+            return;
+        }
+
+        html.append("<table><thead><tr><th></th>");
+        for (String theme : stats.keySet()) {
+            html.append("<th>").append(theme).append("</th>");
+        }
+        html.append("<th>TOTAL</th></tr></thead><tbody>");
+
+        int gtLocam = 0, gtCodix = 0, maxVal = 0;
+        Map<String, Integer> colTotals = new HashMap<>();
+        for (String t : stats.keySet()) {
+            int l = stats.get(t).get("LOCAM");
+            int c = stats.get(t).get("Codix");
+            gtLocam += l;
+            gtCodix += c;
+            colTotals.put(t, l + c);
+            maxVal = Math.max(maxVal, Math.max(l, c));
+        }
+
+        // Ligne LOCAM
+        html.append("<tr><td class='row-name'>LOCAM</td>");
+        for (String t : stats.keySet()) {
+            html.append(cell(stats.get(t).get("LOCAM"), maxVal));
+        }
+        html.append("<td style='font-weight:bold; background:#eee;'>").append(gtLocam).append("</td></tr>");
+
+        // Ligne Codix
+        html.append("<tr><td class='row-name'>Codix</td>");
+        for (String t : stats.keySet()) {
+            html.append(cell(stats.get(t).get("Codix"), maxVal));
+        }
+        html.append("<td style='font-weight:bold; background:#eee;'>").append(gtCodix).append("</td></tr>");
+
+        // Ligne TOTAL
+        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
+        int totalMax = colTotals.values().stream().max(Integer::compare).orElse(0);
+        for (String t : stats.keySet()) {
+            html.append(cell(colTotals.get(t), totalMax));
+        }
+        html.append("<td class='sep-border'>").append(gtLocam + gtCodix).append("</td></tr>");
+
+        html.append("</tbody></table><br>");
+    }
+
+// Helper pour les cellules avec heatmap (déjà inspiré de ton style)
+    private String cell(int val, int max) {
+        String color = "#ffffff";
+        if (val > 0 && max > 0) {
+            double ratio = Math.min((double) val / (double) max, 1.0);
+            int r = (int) (255 + (204 - 255) * ratio);
+            int g = (int) (255 + (50 - 255) * ratio);
+            int b = (int) (255 + (90 - 255) * ratio);
+            color = String.format("#%02x%02x%02x", r, g, b);
+        }
+        return "<td style='background-color:" + color + "'>" + val + "</td>";
     }
 
     private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis) {
@@ -117,7 +183,7 @@ public class ResourcePlanningRenderer {
         double diff = metric.current - metric.previous;
         String trendHtml;
         if (metric.previous == 0 && !isPercent) {
-             trendHtml = "<span class='trend-neutral'>-</span>";
+            trendHtml = "<span class='trend-neutral'>-</span>";
         } else if (Math.abs(diff) < 0.1) {
             trendHtml = "<span class='trend-neutral'>&#9654; Stable</span>";
         } else {
@@ -150,19 +216,25 @@ public class ResourcePlanningRenderer {
         html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Time spent on LOCAM (Jours/Homme)</th>");
         html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Number of DEV + WEB tickets assigned</th>");
         html.append("</tr><tr>");
-        for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
-        for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
+        for (Integer w : data.weeks) {
+            html.append("<th class='sep-border'>W").append(w).append("</th>");
+        }
+        for (Integer w : data.weeks) {
+            html.append("<th class='sep-border'>W").append(w).append("</th>");
+        }
         html.append("</tr></thead><tbody>");
 
         for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
             ResourcePlanningService.UserStats user = data.userStats.get(login);
-            if (user == null) continue;
+            if (user == null) {
+                continue;
+            }
             html.append("<tr>");
             html.append("<td class='row-name'>").append(user.fullName).append("</td>");
             for (int i = 0; i < data.weeks.size(); i++) {
                 Integer w = data.weeks.get(i);
                 double val = user.timePerWeek.getOrDefault(w, 0.0);
-                String cssClass = (i == 0) ? "sep-border" : ""; 
+                String cssClass = (i == 0) ? "sep-border" : "";
                 html.append("<td class='").append(cssClass).append("' style='background-color:").append(getGreenHeatmap(val)).append("'>");
                 html.append(val > 0.05 ? String.format("%.1f", val) : "0,0");
                 html.append("</td>");
@@ -177,7 +249,7 @@ public class ResourcePlanningRenderer {
             }
             html.append("</tr>");
         }
-        
+
         html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
         for (int i = 0; i < data.weeks.size(); i++) {
             Integer w = data.weeks.get(i);
@@ -193,8 +265,10 @@ public class ResourcePlanningRenderer {
     }
 
     private String getGreenHeatmap(double val) {
-        if (val <= 0.05) return "#ffffff";
-        double ratio = Math.min(val / 5.0, 1.0); 
+        if (val <= 0.05) {
+            return "#ffffff";
+        }
+        double ratio = Math.min(val / 5.0, 1.0);
         int r = (int) (255 + (46 - 255) * ratio);
         int g = (int) (255 + (204 - 255) * ratio);
         int b = (int) (255 + (113 - 255) * ratio);
@@ -202,11 +276,14 @@ public class ResourcePlanningRenderer {
     }
 
     private String getRedHeatmap(int val) {
-        if (val == 0) return "#ffffff";
-        double ratio = Math.min((double)val / 20.0, 1.0);
+        if (val == 0) {
+            return "#ffffff";
+        }
+        double ratio = Math.min((double) val / 20.0, 1.0);
         int r = (int) (255 + (204 - 255) * ratio);
         int g = (int) (255 + (50 - 255) * ratio);
         int b = (int) (255 + (90 - 255) * ratio);
         return String.format("#%02x%02x%02x", r, g, b);
     }
+
 }
