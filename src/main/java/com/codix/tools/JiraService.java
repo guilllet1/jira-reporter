@@ -134,59 +134,47 @@ public class JiraService {
         JSONObject searchResult = searchJira(baseJql, 1000, null);
         Map<String, Map<String, Integer>> stats = new TreeMap<>();
 
-        // Initialisation des thèmes existants dans le mapping
+        // Initialisation
         for (String val : new TreeSet<>(mapping.values())) {
             stats.put(val, createActorMap());
         }
-        // Ajout d'une catégorie "AUTRES" pour pointer les tickets sans thème (différences)
         stats.put("AUTRES", createActorMap());
 
         if (searchResult == null) {
             return stats;
         }
 
-        // Statuts à exclure selon ta demande
         List<String> excluded = Arrays.asList("Closed", "Cancel", "Pending");
-
         JSONArray issues = searchResult.getJSONArray("issues");
+
         for (int i = 0; i < issues.length(); i++) {
-            JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
+            JSONObject issue = issues.getJSONObject(i);
+            String key = issue.getString("key");
+            JSONObject fields = issue.getJSONObject("fields");
             String status = fields.getJSONObject("status").getString("name");
 
-            // 1. Filtrage des statuts exclus
-            boolean isExcluded = false;
-            for (String s : excluded) {
-                if (s.equalsIgnoreCase(status)) {
-                    isExcluded = true;
-                    break;
-                }
-            }
-            if (isExcluded) {
+            if (excluded.contains(status)) {
                 continue;
             }
 
-            // 2. Identification du thème
             JSONArray labelsJson = fields.optJSONArray("labels");
             String categoryFound = identifyCategory(labelsJson, mapping);
 
-            // Si aucun label de thème n'est trouvé, on utilise "AUTRES"
             if (categoryFound == null) {
                 categoryFound = "AUTRES";
+                System.out.println("[DEBUG] Ticket sans thème (AUTRES) : " + key);
             }
 
             Map<String, Integer> ds = stats.get(categoryFound);
-            if (ds != null) {
-                if ("Replied by CODIX".equalsIgnoreCase(status)) {
-                    ds.put("LOCAM", ds.get("LOCAM") + 1);
-                } else {
-                    ds.put("Codix", ds.get("Codix") + 1);
-                }
+            if ("Replied by CODIX".equalsIgnoreCase(status)) {
+                ds.put("LOCAM", ds.get("LOCAM") + 1);
+            } else {
+                ds.put("Codix", ds.get("Codix") + 1);
             }
         }
         return stats;
     }
 
-// Helper pour initialiser la structure
     private Map<String, Integer> createActorMap() {
         Map<String, Integer> m = new HashMap<>();
         m.put("LOCAM", 0);
@@ -231,7 +219,8 @@ public class JiraService {
             stats.put(MetricType.STOCK, getCount(jqlStock));
             stats.put(MetricType.CREATED, getCount(scopeJql + " AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\""));
             stats.put(MetricType.CLOSED, getCount(scopeJql + " AND \"Codix reply\" is not EMPTY AND status changed to Closed DURING (\"" + startStr + "\", \"" + endStr + "\")"));
-            stats.put(MetricType.DELIVERED, countDeliveredViaChangelog(scopeJql, startOfWeek, endOfWeek));
+            // Remplacez l'appel à countDeliveredViaChangelog par :
+            stats.put(MetricType.DELIVERED, countDeliveredByLabelDate(scopeJql, startOfWeek, endOfWeek));
 
             weeklyStats.put(weekNum, stats);
             System.out.print(".");
@@ -281,60 +270,52 @@ public class JiraService {
         return new CategoryHistoryData(weeklyCatStats, weekLabels, weekOrder);
     }
 
-    private int countDeliveredViaChangelog(String coreJql, LocalDate start, LocalDate end) {
+    /**
+     * Compte les tickets livrés en analysant les étiquettes au format JJ/MM/AA.
+     * Un ticket est compté si l'un de ses labels correspond à une date comprise
+     * entre start et end.
+     */
+    private int countDeliveredByLabelDate(String coreJql, LocalDate start, LocalDate end) {
         int count = 0;
         try {
-            String jql = coreJql + " AND updated >= \"" + start.format(JIRA_DATE_FMT) + "\" AND updated <= \"" + end.format(JIRA_DATE_FMT) + "\"";
-            JSONObject result = searchJira(jql, 1000, "changelog");
+            // On récupère les tickets du périmètre possédant au moins une étiquette
+            String jql = coreJql + " AND labels is not EMPTY";
+            JSONObject result = searchJira(jql, 1000, null);
             if (result == null) {
                 return 0;
             }
 
             JSONArray issues = result.getJSONArray("issues");
-            LocalDateTime startDt = start.atStartOfDay();
-            LocalDateTime endDt = end.atTime(23, 59, 59);
+            DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("dd/MM/yy");
 
             for (int i = 0; i < issues.length(); i++) {
                 JSONObject issue = issues.getJSONObject(i);
-                if (!issue.has("changelog")) {
+                JSONArray labels = issue.getJSONObject("fields").optJSONArray("labels");
+                if (labels == null) {
                     continue;
                 }
 
-                JSONArray histories = issue.getJSONObject("changelog").getJSONArray("histories");
-                boolean delivered = false;
+                for (int j = 0; j < labels.length(); j++) {
+                    String label = labels.getString(j);
 
-                for (int h = 0; h < histories.length(); h++) {
-                    JSONObject history = histories.getJSONObject(h);
-                    String createdStr = history.getString("created");
-                    LocalDateTime changeDate;
-                    try {
-                        changeDate = LocalDateTime.parse(createdStr, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"));
-                    } catch (Exception ex) {
-                        continue;
-                    }
+                    // Vérifie si le label correspond au format JJ/MM/AA (ex: 12/12/25)
+                    if (label.matches("\\d{2}/\\d{2}/\\d{2}")) {
+                        try {
+                            LocalDate deliveryDate = LocalDate.parse(label, labelFmt);
 
-                    if (changeDate.isAfter(startDt) && changeDate.isBefore(endDt)) {
-                        JSONArray items = history.getJSONArray("items");
-                        for (int k = 0; k < items.length(); k++) {
-                            JSONObject item = items.getJSONObject(k);
-                            String fieldName = item.optString("field", "");
-                            String toString = item.optString("toString", "");
-                            if ("Statut Codix".equalsIgnoreCase(fieldName) && "Livrée".equalsIgnoreCase(toString)) {
-                                delivered = true;
-                                break;
+                            // Si la date du label est dans la semaine concernée, on compte le ticket
+                            if (!deliveryDate.isBefore(start) && !deliveryDate.isAfter(end)) {
+                                count++;
+                                break; // On a trouvé une date valide pour ce ticket, on passe au suivant
                             }
+                        } catch (Exception ex) {
+                            // Label mal formaté ou date invalide, on ignore
                         }
                     }
-                    if (delivered) {
-                        break;
-                    }
-                }
-                if (delivered) {
-                    count++;
                 }
             }
         } catch (Exception e) {
-            System.err.println("Err Changelog: " + e.getMessage());
+            System.err.println("Err Delivery Labels: " + e.getMessage());
         }
         return count;
     }
@@ -362,15 +343,17 @@ public class JiraService {
         }
     }
 
-    // Identifie la catégorie selon le mapping fourni
     private String identifyCategory(JSONArray labels, Map<String, String> mapping) {
         if (labels == null) {
             return null;
         }
         for (int j = 0; j < labels.length(); j++) {
             String l = labels.getString(j);
-            if (mapping.containsKey(l)) {
-                return mapping.get(l);
+            // Recherche insensible à la casse dans les clés du mapping
+            for (String themeKey : mapping.keySet()) {
+                if (themeKey.equalsIgnoreCase(l)) {
+                    return mapping.get(themeKey);
+                }
             }
         }
         return null;

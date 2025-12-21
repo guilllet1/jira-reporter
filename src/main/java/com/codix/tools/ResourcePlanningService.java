@@ -109,8 +109,18 @@ public class ResourcePlanningService {
                 if (labels != null) {
                     for (int j = 0; j < labels.length(); j++) {
                         String label = labels.getString(j);
-                        if (stats.containsKey(label)) {
-                            Map<String, Integer> s = stats.get(label);
+                        String foundKey = null;
+                        
+                        // Recherche insensible à la casse dans les thèmes configurés
+                        for (String key : stats.keySet()) {
+                            if (key.equalsIgnoreCase(label)) {
+                                foundKey = key;
+                                break;
+                            }
+                        }
+                        
+                        if (foundKey != null) {
+                            Map<String, Integer> s = stats.get(foundKey);
                             if ("Replied by CODIX".equalsIgnoreCase(status)) {
                                 s.put("LOCAM", s.get("LOCAM") + 1);
                             } else {
