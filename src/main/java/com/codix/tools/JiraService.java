@@ -330,11 +330,19 @@ public class JiraService {
     }
 
     private JSONObject searchJira(String jql, int maxResults, String expand) throws IOException {
-        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) + "&maxResults=" + maxResults + "&fields=status,labels";
+        // Ajout des champs created, customfield_12701 et customfield_13600
+        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8)
+                + "&maxResults=" + maxResults
+                + "&fields=status,labels,created,customfield_12701,customfield_13600";
+
         if (expand != null) {
             url += "&expand=" + expand;
         }
-        Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).addHeader("Content-Type", "application/json").build();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer " + token)
+                .addHeader("Content-Type", "application/json")
+                .build();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 return null;
@@ -349,7 +357,7 @@ public class JiraService {
         }
         for (int j = 0; j < labels.length(); j++) {
             String l = labels.getString(j);
-            // Recherche insensible à la casse dans les clés du mapping
+            // Comparaison insensible à la casse
             for (String themeKey : mapping.keySet()) {
                 if (themeKey.equalsIgnoreCase(l)) {
                     return mapping.get(themeKey);
@@ -394,5 +402,119 @@ public class JiraService {
             themeMapping.put(t, t);
         }
         return getStatsByMapping(baseJql, themeMapping);
+    }
+
+    public Map<String, Map<String, Double>> getAverageAssignmentTimeByDomain(String baseJql) throws IOException {
+        System.out.println("Analyse des temps moyens d'assignation par domaine...");
+        JSONObject result = searchJira(baseJql, 1000, null);
+        Map<String, Map<String, Double>> totalTime = new TreeMap<>();
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+
+        if (result == null) {
+            return totalTime;
+        }
+
+        JSONArray issues = result.getJSONArray("issues");
+        long now = System.currentTimeMillis();
+
+        for (int i = 0; i < issues.length(); i++) {
+            JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
+            String status = fields.getJSONObject("status").getString("name");
+            String domain = identifyCategory(fields.optJSONArray("labels"), THEME_MAPPING);
+            if (domain == null) {
+                domain = "AUTRES";
+            }
+
+            // Détermination de l'acteur et du champ de date correspondant
+            String actor = "Replied by CODIX".equalsIgnoreCase(status) ? "LOCAM" : "Codix";
+            String dateField = "LOCAM".equals(actor) ? "customfield_13600" : "customfield_12701";
+
+            String dateStr = fields.optString(dateField, null);
+            // Fallback sur la date de création si le champ est vide
+            if (dateStr == null || "null".equals(dateStr) || dateStr.isEmpty()) {
+                dateStr = fields.optString("created", null);
+            }
+
+            if (dateStr != null) {
+                long startTime = parseJiraDate(dateStr);
+                double deltaDays = (double) (now - startTime) / (1000 * 60 * 60 * 24);
+
+                totalTime.putIfAbsent(domain, createActorMapDouble());
+                counts.putIfAbsent(domain, createActorMapInt());
+
+                totalTime.get(domain).put(actor, totalTime.get(domain).get(actor) + deltaDays);
+                counts.get(domain).put(actor, counts.get(domain).get(actor) + 1);
+            }
+        }
+
+        // Calcul des moyennes par acteur
+        Map<String, Map<String, Double>> averages = new TreeMap<>();
+        for (String dom : totalTime.keySet()) {
+            averages.put(dom, new HashMap<>());
+            for (String act : Arrays.asList("LOCAM", "Codix")) {
+                int count = counts.get(dom).getOrDefault(act, 0);
+                double avg = count > 0 ? totalTime.get(dom).get(act) / count : 0.0;
+                averages.get(dom).put(act, avg);
+            }
+        }
+        return averages;
+    }
+
+    private Map<String, Double> createActorMapDouble() {
+        Map<String, Double> m = new HashMap<>();
+        m.put("LOCAM", 0.0);
+        m.put("Codix", 0.0);
+        return m;
+    }
+
+    private Map<String, Integer> createActorMapInt() {
+        Map<String, Integer> m = new HashMap<>();
+        m.put("LOCAM", 0);
+        m.put("Codix", 0);
+        return m;
+    }
+
+    private long parseJiraDate(String dateStr) {
+        return LocalDateTime.parse(dateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"))
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    public Map<String, Double> getGlobalAverageDelays(String baseJql) throws IOException {
+        JSONObject result = searchJira(baseJql, 1000, null);
+        double totalLocamTime = 0, totalCodixTime = 0;
+        int countLocam = 0, countCodix = 0;
+        long now = System.currentTimeMillis();
+
+        if (result != null && result.has("issues")) {
+            JSONArray issues = result.getJSONArray("issues");
+            for (int i = 0; i < issues.length(); i++) {
+                JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
+                String status = fields.getJSONObject("status").getString("name");
+
+                boolean isLocamTurn = "Replied by CODIX".equalsIgnoreCase(status);
+                // Champ 13600 (Rép. Codix) pour LOCAM, Champ 12701 (Rép. Client) pour Codix
+                String dateField = isLocamTurn ? "customfield_13600" : "customfield_12701";
+
+                String dateStr = fields.optString(dateField, null);
+                if (dateStr == null || "null".equals(dateStr)) {
+                    dateStr = fields.optString("created", null);
+                }
+
+                if (dateStr != null) {
+                    double deltaDays = (double) (now - parseJiraDate(dateStr)) / (1000 * 60 * 60 * 24);
+                    if (isLocamTurn) {
+                        totalLocamTime += deltaDays;
+                        countLocam++;
+                    } else {
+                        totalCodixTime += deltaDays;
+                        countCodix++;
+                    }
+                }
+            }
+        }
+        Map<String, Double> delays = new HashMap<>();
+        delays.put("LOCAM", countLocam > 0 ? totalLocamTime / countLocam : 0.0);
+        delays.put("Codix", countCodix > 0 ? totalCodixTime / countCodix : 0.0);
+        return delays;
     }
 }

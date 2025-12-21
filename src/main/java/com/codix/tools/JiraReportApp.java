@@ -12,10 +12,11 @@ public class JiraReportApp {
         try {
             System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         try {
-            // 1. Configuration
             Properties props = new Properties();
             try (FileInputStream fis = new FileInputStream("config.properties")) {
                 props.load(fis);
@@ -25,24 +26,19 @@ public class JiraReportApp {
             JiraService jiraService = new JiraService(props.getProperty("jira.url"), props.getProperty("jira.token"));
             HtmlRenderer renderer = new HtmlRenderer();
 
-            // 2. Exécution de la logique métier
-            
-            // Tableau 1 : Domaines (Existant)
+            // Récupération des données
             Map<String, Map<String, Integer>> domainStats = jiraService.getCurrentDomainStats(jql);
-
-            // Tableau 1bis : Domaines Fonctionnels (Nouveau)
             Map<String, Map<String, Integer>> functionalStats = jiraService.getCurrentFunctionalStats(jql);
-            
-            Map<String, Map<String, Integer>> themeStats = jiraService.getCurrentThemeStats(jql); // Nouveau
-            
-            // Tableau 2 : Historique Général
-            JiraService.HistoryData historyStats = jiraService.getHistoryMetrics(jql);
+            Map<String, Map<String, Integer>> themeStats = jiraService.getCurrentThemeStats(jql);
 
-            // Tableau 3 : Historique Catégories
+            // Calcul des temps moyens d'assignation
+            Map<String, Map<String, Double>> avgTimeStats = jiraService.getAverageAssignmentTimeByDomain(jql);
+
+            JiraService.HistoryData historyStats = jiraService.getHistoryMetrics(jql);
             JiraService.CategoryHistoryData categoryStats = jiraService.getCodixCategoryHistory(jql);
 
-            // 3. Génération du rendu (Passage des 4 datasets)
-            renderer.generate(domainStats, functionalStats, themeStats, historyStats, categoryStats, props.getProperty("output.file"));
+            Map<String, Double> globalDelays = jiraService.getGlobalAverageDelays(jql);
+renderer.generate(domainStats, functionalStats, themeStats, avgTimeStats, globalDelays, historyStats, categoryStats, props.getProperty("output.file"));
 
             System.out.println("Succès ! Rapport généré : " + props.getProperty("output.file"));
 
