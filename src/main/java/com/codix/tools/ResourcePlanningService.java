@@ -5,7 +5,12 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class ResourcePlanningService {
 
@@ -25,6 +31,7 @@ public class ResourcePlanningService {
     private static final double SECONDS_IN_MD = 25200.0;
 
     public static final Map<String, String> TARGET_USERS = new LinkedHashMap<>();
+
     static {
         TARGET_USERS.put("amirchev", "Aleksandar Mirchev");
         TARGET_USERS.put("amakki", "Amal Makki");
@@ -57,6 +64,12 @@ public class ResourcePlanningService {
         TARGET_USERS.put("ypetrov", "Yordan Petrov");
     }
 
+    private static final String[] ALL_THEMES = {
+        "AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API",
+        "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4",
+        "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"
+    };
+
     public ResourcePlanningService(String jiraUrl, String token) {
         this.jiraUrl = jiraUrl;
         this.token = token;
@@ -68,80 +81,156 @@ public class ResourcePlanningService {
         report.planning = getPlanningData(projectKeys, nbWeeks);
         report.dashboard = getDashboardMetrics(projectKeys);
         try {
-            report.themeStats = getThemeStats(); // Ajouté
+            report.themeStats = getThemeStats();
         } catch (IOException e) {
             e.printStackTrace();
             report.themeStats = new LinkedHashMap<>();
         }
         return report;
     }
-    
-    // Nouvelle méthode pour les thèmes
+
+    // --- ANALYSE DES ABSENCES (HR) ---
+    public Map<String, Integer> parseHRAbsences(String path, String monthPrefix) throws Exception {
+        Map<String, Integer> absences = new HashMap<>();
+        File input = new File(path);
+        if (!input.exists()) {
+            return absences;
+        }
+
+        Document doc = Jsoup.parse(input, "UTF-8");
+        Elements rows = doc.select("tr:has(td.user_name_td)");
+
+        for (Element row : rows) {
+            String fullName = row.select("td.user_name_td").text().trim();
+
+            // Trouver la clé login correspondant au nom complet
+            String login = TARGET_USERS.entrySet().stream()
+                    .filter(entry -> entry.getValue().equalsIgnoreCase(fullName))
+                    .map(Map.Entry::getKey)
+                    .findFirst().orElse(null);
+
+            if (login != null) {
+                // Compter les cellules de congés (paid, sick, compensation) pour le mois
+                long count = row.select("td[id^=cell_" + monthPrefix + "]").stream()
+                        .filter(td -> td.hasClass("paid_leave") || td.hasClass("sick_leave") || td.hasClass("compensation_leave"))
+                        .count();
+                absences.put(login, (int) count);
+            }
+        }
+        return absences;
+    }
+
+    public List<SufferingTheme> calculateSufferingThemes(String jql, Map<String, Map<String, Double>> specs, Map<String, Integer> absences, double workingDays) throws IOException {
+        Map<String, Integer> themeStock = new HashMap<>();
+        List<String> autresTickets = new ArrayList<>(); // Pour loguer les clés des tickets "AUTRES"
+
+        JSONObject result = searchJira(jql, 0, 1000, null);
+        if (result != null && result.has("issues")) {
+            JSONArray issues = result.getJSONArray("issues");
+            for (int i = 0; i < issues.length(); i++) {
+                JSONObject issue = issues.getJSONObject(i);
+                String theme = identifyTheme(issue.getJSONObject("fields").optJSONArray("labels"));
+                themeStock.put(theme, themeStock.getOrDefault(theme, 0) + 1);
+
+                // Log des tickets "AUTRES"
+                if ("AUTRES".equals(theme)) {
+                    autresTickets.add(issue.getString("key"));
+                }
+            }
+        }
+
+        if (!autresTickets.isEmpty()) {
+            System.out.println("Tickets identifiés dans le thème 'AUTRES' : " + String.join(", ", autresTickets));
+        }
+
+        // Calcul de la capacité
+        Map<String, Double> themeCapacity = new HashMap<>();
+        specs.forEach((login, userSpecs) -> {
+            double daysPresent = workingDays - absences.getOrDefault(login, 0);
+            userSpecs.forEach((theme, pct) -> {
+                themeCapacity.merge(theme, daysPresent * (pct / 100.0), Double::sum);
+            });
+        });
+
+        List<SufferingTheme> suffering = new ArrayList<>();
+        System.out.println("\n--- DÉTAILS DU CALCUL DE TENSION (CHARGE vs CAPACITÉ) ---");
+
+        themeStock.keySet().stream().sorted()
+                .filter(t -> !"TH18".equals(t)) // EXCLUSION TH18
+                .forEach(theme -> {
+                    int count = themeStock.get(theme);
+                    double chargeEstimee = count * 2.0; // 2 jours par ticket
+                    double capacite = themeCapacity.getOrDefault(theme, 0.0);
+                    double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
+
+                    // Calcul du besoin en ressources supplémentaires (Le Gap)
+                    double extraResources = Math.max(0, (chargeEstimee - capacite) / workingDays);
+
+                    System.out.format("Thème: %-15s | Stock: %2d | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: +%.2f res%n",
+                            theme, count, chargeEstimee, capacite, tension, extraResources);
+
+                    if (count >= 3 && tension > 1.1) {
+                        suffering.add(new SufferingTheme(theme, tension, count, extraResources));
+                    }
+                });
+
+        return suffering.stream()
+                .sorted(Comparator.comparingDouble(SufferingTheme::getTension).reversed())
+                .limit(3)
+                .collect(Collectors.toList());
+    }
+
+    public String identifyTheme(JSONArray labels) {
+        if (labels != null) {
+            for (int i = 0; i < labels.length(); i++) {
+                String label = labels.getString(i);
+                for (String t : ALL_THEMES) {
+                    if (t.equalsIgnoreCase(label)) {
+                        return t;
+                    }
+                }
+            }
+        }
+        return "AUTRES";
+    }
+
     private Map<String, Map<String, Integer>> getThemeStats() throws IOException {
-        System.out.println("Analyse du stock par thème (MEP1+MEP2)...");
+        System.out.println("Analyse du stock par thème...");
         String jql = "project = LOCAMWEB AND status in (Open, Reopened, \"Replied by CODIX\") AND type != CRQ";
-        String[] themes = {"AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API", 
-                           "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4", 
-                           "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"};
-        
+
         Map<String, Map<String, Integer>> stats = new LinkedHashMap<>();
-        for (String t : themes) {
+        for (String t : ALL_THEMES) {
             stats.put(t, new HashMap<>());
             stats.get(t).put("LOCAM", 0);
             stats.get(t).put("Codix", 0);
         }
 
-        int startAt = 0;
-        int maxResults = 100;
-        int total = 0;
-
+        int startAt = 0, maxResults = 100, total = 0;
         do {
             JSONObject result = searchJira(jql, startAt, maxResults, null);
-            if (result == null) break;
+            if (result == null) {
+                break;
+            }
             total = result.getInt("total");
             JSONArray issues = result.getJSONArray("issues");
-            
+
             for (int i = 0; i < issues.length(); i++) {
                 JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
                 String status = fields.getJSONObject("status").getString("name");
-                JSONArray labels = fields.optJSONArray("labels");
-                
-                if (labels != null) {
-                    for (int j = 0; j < labels.length(); j++) {
-                        String label = labels.getString(j);
-                        String foundKey = null;
-                        
-                        // Recherche insensible à la casse dans les thèmes configurés
-                        for (String key : stats.keySet()) {
-                            if (key.equalsIgnoreCase(label)) {
-                                foundKey = key;
-                                break;
-                            }
-                        }
-                        
-                        if (foundKey != null) {
-                            Map<String, Integer> s = stats.get(foundKey);
-                            if ("Replied by CODIX".equalsIgnoreCase(status)) {
-                                s.put("LOCAM", s.get("LOCAM") + 1);
-                            } else {
-                                s.put("Codix", s.get("Codix") + 1);
-                            }
-                            break; 
-                        }
-                    }
+                String theme = identifyTheme(fields.optJSONArray("labels"));
+
+                if (stats.containsKey(theme)) {
+                    String key = "Replied by CODIX".equalsIgnoreCase(status) ? "LOCAM" : "Codix";
+                    stats.get(theme).put(key, stats.get(theme).get(key) + 1);
                 }
             }
             startAt += maxResults;
         } while (startAt < total);
-
         return stats;
     }
 
-    // --- DASHBOARD (KPI) ---
     private DashboardMetrics getDashboardMetrics(String projects) {
-        System.out.println("Calcul des KPIs Dashboard...");
         DashboardMetrics kpis = new DashboardMetrics();
-        
         LocalDate today = LocalDate.now();
         LocalDate endW = today.with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
         LocalDate startW = endW.minusDays(6);
@@ -153,57 +242,23 @@ public class ResourcePlanningService {
         String startPrevStr = startPrev.format(JIRA_DATE_FMT);
         String endPrevStr = endPrev.format(JIRA_DATE_FMT);
 
-        // 1. Nouveaux tickets assignés à Codix cette semaine (WEB)
-        String jqlWebCurrent = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startStr + "\"";
-        String jqlWebPrev = "project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\") AND NOT assignee changed to hotline BEFORE \"" + startPrevStr + "\"";
-        kpis.stockWeb.current = getCount(jqlWebCurrent);
-        kpis.stockWeb.previous = getCount(jqlWebPrev);
-
-        // 2. Réponses Codix
-        String jqlReplyBase = "project in (" + projects + ") AND status changed to \"Replied by CODIX\"";
-        kpis.replies.current = getCount(jqlReplyBase + " DURING (\"" + startStr + "\", \"" + endStr + "\")");
-        kpis.replies.previous = getCount(jqlReplyBase + " DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")");
-
-        // 3. Tickets Fermés par LOCAM
-        String jqlClosedCurrent = "project = LOCAMWEB AND type != CRQ AND \"Codix reply\" is not EMPTY AND status changed to Closed DURING (\"" + startStr + "\", \"" + endStr + "\")";
-        String jqlClosedPrev = "project = LOCAMWEB AND type != CRQ AND \"Codix reply\" is not EMPTY AND status changed to Closed DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")";
-        kpis.closed.current = getCount(jqlClosedCurrent);
-        kpis.closed.previous = getCount(jqlClosedPrev);
-
-        // Préparation de la liste des utilisateurs pour le JQL
         String userList = "\"" + String.join("\", \"", TARGET_USERS.keySet()) + "\"";
 
-        // 4. Stock actuel assigné à l'équipe (S et S-1)
-        String jqlStockCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ AND assignee IN (" + userList + ")";
-        String jqlStockPrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"";
-        kpis.stockGlobal.current = getCount(jqlStockCurrent);
-        kpis.stockGlobal.previous = getCount(jqlStockPrev);
+        kpis.stockWeb.current = getCount("project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\")");
+        kpis.stockWeb.previous = getCount("project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")");
 
-        // 5. % Stale (Sans réponse > 5j ouvrés) - Doit aussi être filtré par l'équipe
-        if (kpis.stockGlobal.current > 0) {
-            String jqlStaleCurrent = "project = LOCAMWEB AND status in (Open, Reopened) AND \"Reopened/Updated by Client\" < -8d AND type != CRQ AND assignee IN (" + userList + ")";
-            double staleCountCurrent = getCount(jqlStaleCurrent);
-            kpis.stalePercent.current = (staleCountCurrent / kpis.stockGlobal.current) * 100.0;
-        }
+        kpis.replies.current = getCount("project in (" + projects + ") AND status changed to \"Replied by CODIX\" DURING (\"" + startStr + "\", \"" + endStr + "\")");
+        kpis.replies.previous = getCount("project in (" + projects + ") AND status changed to \"Replied by CODIX\" DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")");
 
-        if (kpis.stockGlobal.previous > 0) {
-            String staleLimitPrevStr = endPrev.minusDays(8).format(JIRA_DATE_FMT);
-            String jqlStalePrev = "project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" "
-                    + "AND \"Reopened/Updated by Client\" <= \"" + staleLimitPrevStr + "\" AND type != CRQ "
-                    + "AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"";
-
-            double staleCountPrev = getCount(jqlStalePrev);
-            kpis.stalePercent.previous = (staleCountPrev / kpis.stockGlobal.previous) * 100.0;
-        }
+        kpis.stockGlobal.current = getCount("project = LOCAMWEB AND status in (Open, Reopened) AND assignee IN (" + userList + ")");
+        kpis.stockGlobal.previous = getCount("project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"");
 
         return kpis;
     }
 
-    // --- PLANNING (DETAIL) ---
     private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
         PlanningData data = new PlanningData();
         LocalDate today = LocalDate.now();
-
         for (int i = nbWeeks - 1; i >= 0; i--) {
             LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
             LocalDate startOfWeek = endOfWeek.minusDays(6);
@@ -211,160 +266,153 @@ public class ResourcePlanningService {
             data.weeks.add(weekNum);
             data.weekDates.put(weekNum, new WeekRange(startOfWeek, endOfWeek));
         }
-
-        for (Map.Entry<String, String> entry : TARGET_USERS.entrySet()) {
+        TARGET_USERS.forEach((login, name) -> {
             UserStats u = new UserStats();
-            u.login = entry.getKey();
-            u.fullName = entry.getValue();
-            data.userStats.put(entry.getKey(), u);
-        }
-
+            u.login = login;
+            u.fullName = name;
+            data.userStats.put(login, u);
+        });
         analyzeTimeSpent(projectKeys, data);
         analyzeAssignedStock(projectKeys, data);
-
         return data;
     }
 
     private void analyzeTimeSpent(String projects, PlanningData data) {
-        System.out.print("Récupération du Temps Passé ");
         LocalDate globalStart = data.weekDates.get(data.weeks.get(0)).start;
-        String jql = "project in (" + projects + ") AND updated >= \"" + globalStart.format(JIRA_DATE_FMT) + "\" ORDER BY key ASC";
-        
-        int startAt = 0;
-        int maxPerRequest = 100;
-        int total = 0;
-        Set<String> processedTickets = new HashSet<>();
-
+        String jql = "project in (" + projects + ") AND updated >= \"" + globalStart.format(JIRA_DATE_FMT) + "\"";
+        int startAt = 0, total = 0;
         do {
             try {
-                System.out.print(".");
-                JSONObject result = searchJira(jql, startAt, maxPerRequest, "changelog");
-                if (result == null) break;
-                
+                JSONObject result = searchJira(jql, startAt, 100, "changelog");
+                if (result == null) {
+                    break;
+                }
                 total = result.getInt("total");
                 JSONArray issues = result.getJSONArray("issues");
-                if (issues.length() == 0) break;
-
-                processIssuesForTime(issues, data, processedTickets);
-                
-                startAt += maxPerRequest;
-            } catch (Exception e) { break; }
+                for (int i = 0; i < issues.length(); i++) {
+                    processIssueHistory(issues.getJSONObject(i), data);
+                }
+                startAt += 100;
+            } catch (Exception e) {
+                break;
+            }
         } while (startAt < total);
-        System.out.println(" OK (" + processedTickets.size() + " tickets traités)");
     }
 
-    private void processIssuesForTime(JSONArray issues, PlanningData data, Set<String> processedTickets) {
-        for (int i = 0; i < issues.length(); i++) {
-            JSONObject issue = issues.getJSONObject(i);
-            String issueKey = issue.getString("key");
+    private void processIssueHistory(JSONObject issue, PlanningData data) {
+        if (!issue.has("changelog")) {
+            return;
+        }
+        JSONArray histories = issue.getJSONObject("changelog").getJSONArray("histories");
+        for (int h = 0; h < histories.length(); h++) {
+            JSONObject hist = histories.getJSONObject(h);
+            String author = hist.getJSONObject("author").optString("name", "");
+            if (!TARGET_USERS.containsKey(author)) {
+                continue;
+            }
 
-            if (processedTickets.contains(issueKey)) continue;
-            processedTickets.add(issueKey);
-
-            if (!issue.has("changelog")) continue;
-            JSONArray histories = issue.getJSONObject("changelog").getJSONArray("histories");
-            
-            for (int h = 0; h < histories.length(); h++) {
-                JSONObject history = histories.getJSONObject(h);
-                JSONObject authorObj = history.optJSONObject("author");
-                if (authorObj == null) continue;
-                String authorLogin = authorObj.optString("name", "");
-                
-                if (!TARGET_USERS.containsKey(authorLogin)) continue;
-
-                String dateStr = history.getString("created");
-                LocalDateTime changeDate;
-                try { changeDate = LocalDateTime.parse(dateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")); } catch(Exception ex) { continue; }
-
-                int matchingWeek = -1;
-                LocalDate d = changeDate.toLocalDate();
-                
-                for (Integer w : data.weeks) {
-                    WeekRange range = data.weekDates.get(w);
-                    if (!d.isBefore(range.start) && !d.isAfter(range.end)) {
-                        matchingWeek = w;
-                        break;
-                    }
-                }
-
-                if (matchingWeek == -1) continue;
-
-                JSONArray items = history.getJSONArray("items");
+            LocalDate d = LocalDateTime.parse(hist.getString("created"), DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")).toLocalDate();
+            data.weeks.stream().filter(w -> !d.isBefore(data.weekDates.get(w).start) && !d.isAfter(data.weekDates.get(w).end)).findFirst().ifPresent(w -> {
+                JSONArray items = hist.getJSONArray("items");
                 for (int k = 0; k < items.length(); k++) {
-                    JSONObject item = items.getJSONObject(k);
-                    if ("timespent".equalsIgnoreCase(item.optString("field", ""))) {
-                        String from = item.optString("from", "0");
-                        String to = item.optString("to", "0");
-                        long delta = Long.parseLong(to.isEmpty() || "null".equals(to) ? "0" : to) 
-                                   - Long.parseLong(from.isEmpty() || "null".equals(from) ? "0" : from);
-                        
+                    if ("timespent".equalsIgnoreCase(items.getJSONObject(k).optString("field", ""))) {
+                        long delta = items.getJSONObject(k).optLong("to", 0) - items.getJSONObject(k).optLong("from", 0);
                         if (delta > 0) {
-                            data.addTime(authorLogin, matchingWeek, delta / SECONDS_IN_MD);
+                            data.addTime(author, w, delta / SECONDS_IN_MD);
                         }
                     }
                 }
-            }
+            });
         }
     }
 
     private void analyzeAssignedStock(String projects, PlanningData data) {
-        System.out.print("Calcul du Stock (Détail) ");
         for (String login : TARGET_USERS.keySet()) {
-            System.out.print(".");
             for (Integer week : data.weeks) {
-                WeekRange range = data.weekDates.get(week);
-                boolean isCurrentWeek = week.equals(data.weeks.get(data.weeks.size()-1));
-                String jql;
-                
-                if (isCurrentWeek) {
-                    jql = "project in (" + projects + ") AND status not in (Closed, Done) AND assignee = \"" + login + "\"";
-                } else {
-                    String dateCheck = range.end.format(JIRA_DATE_FMT);
-                    jql = "project in (" + projects + ") AND status not in (Closed, Done) AND assignee was \"" + login + "\" ON \"" + dateCheck + "\" AND status was not in (Closed, Done) ON \"" + dateCheck + "\"";
-                }
+                String date = data.weekDates.get(week).end.format(JIRA_DATE_FMT);
+                String jql = "project in (" + projects + ") AND status not in (Closed, Done) AND assignee was \"" + login + "\" ON \"" + date + "\"";
                 data.setAssigned(login, week, getCount(jql));
             }
         }
-        System.out.println(" OK");
     }
 
     private int getCount(String jql) {
         try {
             JSONObject json = searchJira(jql, 0, 0, null);
             return json != null ? json.getInt("total") : 0;
-        } catch (Exception e) { return 0; }
-    }
-
-    // Mise à jour de searchJira pour inclure "labels"
-    private JSONObject searchJira(String jql, int startAt, int maxResults, String expand) throws IOException {
-        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) 
-                   + "&startAt=" + startAt + "&maxResults=" + maxResults 
-                   + "&fields=status,assignee,timespent,labels"; // Ajout de labels ici
-        if (expand != null) url += "&expand=" + expand;
-        Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).addHeader("Content-Type", "application/json").build();
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) return null;
-            return new JSONObject(response.body().string());
+        } catch (Exception e) {
+            return 0;
         }
     }
-    
 
-    public static class ReportData { 
-        public PlanningData planning; 
-        public DashboardMetrics dashboard; 
-        public Map<String, Map<String, Integer>> themeStats; // Ajouté
+    private JSONObject searchJira(String jql, int startAt, int maxResults, String expand) throws IOException {
+        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) + "&startAt=" + startAt + "&maxResults=" + maxResults + "&fields=status,assignee,timespent,labels";
+        if (expand != null) {
+            url += "&expand=" + expand;
+        }
+        Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).build();
+        try (Response response = client.newCall(request).execute()) {
+            return response.isSuccessful() ? new JSONObject(response.body().string()) : null;
+        }
     }
-    public static class DashboardMetrics { public KpiMetric stockWeb = new KpiMetric(); public KpiMetric replies = new KpiMetric(); public KpiMetric stockGlobal = new KpiMetric(); public KpiMetric closed = new KpiMetric(); public KpiMetric stalePercent = new KpiMetric(); }
-    public static class KpiMetric { public double current; public double previous; }
-    public static class WeekRange { public LocalDate start; public LocalDate end; public WeekRange(LocalDate s, LocalDate e) { this.start = s; this.end = e; } }
-    public static class UserStats { public String login; public String fullName; public Map<Integer, Double> timePerWeek = new HashMap<>(); public Map<Integer, Integer> assignedPerWeek = new HashMap<>(); }
+
+    // --- INNER CLASSES ---
+    public static class ReportData {
+
+        public PlanningData planning;
+        public DashboardMetrics dashboard;
+        public Map<String, Map<String, Integer>> themeStats;
+    }
+
+    public static class DashboardMetrics {
+
+        public KpiMetric stockWeb = new KpiMetric();
+        public KpiMetric replies = new KpiMetric();
+        public KpiMetric stockGlobal = new KpiMetric();
+        public KpiMetric closed = new KpiMetric();
+        public KpiMetric stalePercent = new KpiMetric();
+    }
+
+    public static class KpiMetric {
+
+        public double current;
+        public double previous;
+    }
+
+    public static class WeekRange {
+
+        public LocalDate start;
+        public LocalDate end;
+
+        public WeekRange(LocalDate s, LocalDate e) {
+            this.start = s;
+            this.end = e;
+        }
+    }
+
+    public static class UserStats {
+
+        public String login, fullName;
+        public Map<Integer, Double> timePerWeek = new HashMap<>();
+        public Map<Integer, Integer> assignedPerWeek = new HashMap<>();
+    }
+
     public static class PlanningData {
+
         public List<Integer> weeks = new ArrayList<>();
         public Map<Integer, WeekRange> weekDates = new HashMap<>();
         public Map<String, UserStats> userStats = new LinkedHashMap<>();
-        public void addTime(String login, int week, double days) { if (userStats.containsKey(login)) userStats.get(login).timePerWeek.merge(week, days, Double::sum); }
-        public void setAssigned(String login, int week, int count) { if (userStats.containsKey(login)) userStats.get(login).assignedPerWeek.put(week, count); }
+
+        public void addTime(String login, int w, double d) {
+            if (userStats.containsKey(login)) {
+                userStats.get(login).timePerWeek.merge(w, d, Double::sum);
+            }
+        }
+
+        public void setAssigned(String login, int w, int c) {
+            if (userStats.containsKey(login)) {
+                userStats.get(login).assignedPerWeek.put(w, c);
+            }
+        }
     }
-    
-    
 }
