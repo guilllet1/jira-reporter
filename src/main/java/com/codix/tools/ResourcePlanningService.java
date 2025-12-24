@@ -69,6 +69,36 @@ public class ResourcePlanningService {
         "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4",
         "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"
     };
+    
+    private static final Map<String, Double> THEME_MEDIANS = new HashMap<>();
+static {
+    THEME_MEDIANS.put("AD", 0.08);
+    THEME_MEDIANS.put("AUTRES", 0.21);
+    THEME_MEDIANS.put("ELLISPHERE", 0.48);
+    THEME_MEDIANS.put("GED", 0.55);
+    THEME_MEDIANS.put("TH1", 0.38);
+    THEME_MEDIANS.put("TH10", 0.73);
+    THEME_MEDIANS.put("TH11", 0.43);
+    THEME_MEDIANS.put("TH12", 0.13);
+    THEME_MEDIANS.put("TH13", 0.23);
+    THEME_MEDIANS.put("TH14", 0.32);
+    THEME_MEDIANS.put("TH16_API", 0.49);
+    THEME_MEDIANS.put("TH16_Interfaces", 0.61);
+    THEME_MEDIANS.put("TH17_Migration", 0.33);
+    THEME_MEDIANS.put("TH18", 0.18);
+    THEME_MEDIANS.put("TH19", 0.42);
+    THEME_MEDIANS.put("TH2", 0.46);
+    THEME_MEDIANS.put("TH20", 0.31);
+    THEME_MEDIANS.put("TH3", 0.55);
+    THEME_MEDIANS.put("TH5.1", 0.24);
+    THEME_MEDIANS.put("TH5.2", 0.25);
+    THEME_MEDIANS.put("TH6.1", 0.26);
+    THEME_MEDIANS.put("TH6.2", 0.36);
+    THEME_MEDIANS.put("TH6.3", 0.24);
+    THEME_MEDIANS.put("TH7", 0.52);
+    THEME_MEDIANS.put("TH8", 0.30);
+    THEME_MEDIANS.put("TRANSVERSE", 1.55);
+}
 
     public ResourcePlanningService(String jiraUrl, String token) {
         this.jiraUrl = jiraUrl;
@@ -120,30 +150,19 @@ public class ResourcePlanningService {
         return absences;
     }
 
-    public List<SufferingTheme> calculateSufferingThemes(String jql, Map<String, Map<String, Double>> specs, Map<String, Integer> absences, double workingDays) throws IOException {
+    public CapacityAlerts calculateCapacityAlerts(String jql, Map<String, Map<String, Double>> specs, Map<String, Integer> absences, double workingDays) throws IOException {
+        CapacityAlerts alerts = new CapacityAlerts();
         Map<String, Integer> themeStock = new HashMap<>();
-        List<String> autresTickets = new ArrayList<>(); // Pour loguer les clés des tickets "AUTRES"
 
         JSONObject result = searchJira(jql, 0, 1000, null);
         if (result != null && result.has("issues")) {
             JSONArray issues = result.getJSONArray("issues");
             for (int i = 0; i < issues.length(); i++) {
-                JSONObject issue = issues.getJSONObject(i);
-                String theme = identifyTheme(issue.getJSONObject("fields").optJSONArray("labels"));
+                String theme = identifyTheme(issues.getJSONObject(i).getJSONObject("fields").optJSONArray("labels"));
                 themeStock.put(theme, themeStock.getOrDefault(theme, 0) + 1);
-
-                // Log des tickets "AUTRES"
-                if ("AUTRES".equals(theme)) {
-                    autresTickets.add(issue.getString("key"));
-                }
             }
         }
 
-        if (!autresTickets.isEmpty()) {
-            System.out.println("Tickets identifiés dans le thème 'AUTRES' : " + String.join(", ", autresTickets));
-        }
-
-        // Calcul de la capacité
         Map<String, Double> themeCapacity = new HashMap<>();
         specs.forEach((login, userSpecs) -> {
             double daysPresent = workingDays - absences.getOrDefault(login, 0);
@@ -152,32 +171,43 @@ public class ResourcePlanningService {
             });
         });
 
-        List<SufferingTheme> suffering = new ArrayList<>();
-        System.out.println("\n--- DÉTAILS DU CALCUL DE TENSION (CHARGE vs CAPACITÉ) ---");
+        List<SufferingTheme> allThemes = new ArrayList<>();
+        themeStock.keySet().stream().filter(t -> !"TH18".equals(t)).forEach(theme -> {
+            int count = themeStock.get(theme);
+            // UTILISATION DE LA MÉDIANE RÉELLE (ou 0.4 par défaut si absent)
+            double mediane = THEME_MEDIANS.getOrDefault(theme, 0.4);
+            double chargeEstimee = count * mediane; 
+            
+            double capacite = themeCapacity.getOrDefault(theme, 0.0);
+            double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
+            
+            // Calcul du gap en ressources (Extra)
+            double extraResources = (chargeEstimee - capacite) / workingDays;
 
-        themeStock.keySet().stream().sorted()
-                .filter(t -> !"TH18".equals(t)) // EXCLUSION TH18
-                .forEach(theme -> {
-                    int count = themeStock.get(theme);
-                    double chargeEstimee = count * 2.0; // 2 jours par ticket
-                    double capacite = themeCapacity.getOrDefault(theme, 0.0);
-                    double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
+            // Debug log mis à jour
+            System.out.format("Thème: %-15s | Stock: %2d | Poids: %.2fj | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: %+.2f res%n", 
+                              theme, count, mediane, chargeEstimee, capacite, tension, extraResources);
 
-                    // Calcul du besoin en ressources supplémentaires (Le Gap)
-                    double extraResources = Math.max(0, (chargeEstimee - capacite) / workingDays);
+            if (tension > 1.1 && count >= 3) {
+                alerts.underCapacity.add(new SufferingTheme(theme, tension, count, extraResources));
+            } else if (tension < 1.0) {
+                alerts.overCapacity.add(new SufferingTheme(theme, tension, count, extraResources));
+            }
+        });
 
-                    System.out.format("Thème: %-15s | Stock: %2d | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: +%.2f res%n",
-                            theme, count, chargeEstimee, capacite, tension, extraResources);
-
-                    if (count >= 3 && tension > 1.1) {
-                        suffering.add(new SufferingTheme(theme, tension, count, extraResources));
-                    }
-                });
-
-        return suffering.stream()
+        // Top 3 Surcharge (Tension > 1.1)
+        alerts.underCapacity = allThemes.stream()
+                .filter(t -> t.getTension() > 1.1 && t.getTicketCount() >= 3)
                 .sorted(Comparator.comparingDouble(SufferingTheme::getTension).reversed())
-                .limit(3)
-                .collect(Collectors.toList());
+                .limit(3).collect(Collectors.toList());
+
+        // Top 3 Disponibilité (Tension < 1.0)
+        alerts.overCapacity = allThemes.stream()
+                .filter(t -> t.getTension() < 1.0)
+                .sorted(Comparator.comparingDouble(SufferingTheme::getTension))
+                .limit(3).collect(Collectors.toList());
+
+        return alerts;
     }
 
     public String identifyTheme(JSONArray labels) {
@@ -256,6 +286,10 @@ public class ResourcePlanningService {
         kpis.stockGlobal.current = getCount("project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ AND assignee IN (" + userList + ")");
         kpis.stockGlobal.previous = getCount("project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"");
 
+        // 3. Tickets clos par LOCAM
+        kpis.closed.current = getCount("project in (" + projects + ") AND status changed FROM \"Replied by Codix\" to Closed DURING (\"" + startStr + "\", \"" + endStr + "\") AND type != CRQ");
+        kpis.closed.previous = getCount("project in (" + projects + ") AND status changed FROM \"Replied by Codix\" to Closed DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\") AND type != CRQ");
+
         // --- AJOUT DU CALCUL STALE % (Tickets sans réponse > 7 jours ouvrés / 8 jours calendaires) ---
         if (kpis.stockGlobal.current > 0) {
             String jqlStale = "project = LOCAMWEB AND status in (Open, Reopened) "
@@ -264,9 +298,6 @@ public class ResourcePlanningService {
 
             double staleCount = getCount(jqlStale);
 
-            // Log de debug pour vérifier tes 17 tickets
-            System.out.println("  [DEBUG KPI] Tickets Stale trouvés : " + (int) staleCount + " sur un stock de " + (int) kpis.stockGlobal.current);
-
             kpis.stalePercent.current = (staleCount / kpis.stockGlobal.current) * 100.0;
         }
 
@@ -274,38 +305,40 @@ public class ResourcePlanningService {
     }
 
     // Mise à jour de la méthode getPlanningData
-private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
-    PlanningData data = new PlanningData();
-    LocalDate today = LocalDate.now();
+    private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
+        PlanningData data = new PlanningData();
+        LocalDate today = LocalDate.now();
 
-    // 1. Semaines passées (Historique)
-    for (int i = nbWeeks - 1; i >= 0; i--) {
-        LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
-        LocalDate startOfWeek = endOfWeek.minusDays(6);
-        int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
-        data.weeks.add(weekNum);
-        data.weekDates.put(weekNum, new WeekRange(startOfWeek, endOfWeek));
+        // 1. Semaines passées (Historique)
+        for (int i = nbWeeks - 1; i >= 0; i--) {
+            LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
+            LocalDate startOfWeek = endOfWeek.minusDays(6);
+            int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+            data.weeks.add(weekNum);
+            data.weekDates.put(weekNum, new WeekRange(startOfWeek, endOfWeek));
+        }
+
+        // 2. NOUVEAU : 4 Prochaines semaines (Prévisionnel)
+        for (int i = 1; i <= 4; i++) {
+            LocalDate nextEnd = today.plusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
+            LocalDate nextStart = nextEnd.minusDays(6);
+            int weekNum = nextEnd.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+            data.nextWeeks.add(weekNum);
+            data.weekDates.put(weekNum, new WeekRange(nextStart, nextEnd));
+        }
+
+        TARGET_USERS.forEach((login, name) -> {
+            UserStats u = new UserStats();
+            u.login = login;
+            u.fullName = name;
+            data.userStats.put(login, u);
+        });
+
+        analyzeTimeSpent(projectKeys, data);
+        analyzeAssignedStock(projectKeys, data);
+
+        return data;
     }
-
-    // 2. NOUVEAU : 4 Prochaines semaines (Prévisionnel)
-    for (int i = 1; i <= 4; i++) {
-        LocalDate nextEnd = today.plusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
-        LocalDate nextStart = nextEnd.minusDays(6);
-        int weekNum = nextEnd.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
-        data.nextWeeks.add(weekNum);
-        data.weekDates.put(weekNum, new WeekRange(nextStart, nextEnd));
-    }
-
-    TARGET_USERS.forEach((login, name) -> {
-        UserStats u = new UserStats(); u.login = login; u.fullName = name;
-        data.userStats.put(login, u);
-    });
-
-    analyzeTimeSpent(projectKeys, data);
-    analyzeAssignedStock(projectKeys, data);
-    
-    return data;
-}
 
     private void analyzeTimeSpent(String projects, PlanningData data) {
         LocalDate globalStart = data.weekDates.get(data.weeks.get(0)).start;
@@ -360,7 +393,7 @@ private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
         for (String login : TARGET_USERS.keySet()) {
             for (Integer week : data.weeks) {
                 String date = data.weekDates.get(week).end.format(JIRA_DATE_FMT);
-                String jql = "project in (" + projects + ") AND status not in (Closed, Done) AND assignee was \"" + login + "\" ON \"" + date + "\"";
+                String jql = "project in (" + projects + ") AND status not in (Closed, Cancel) AND assignee was \"" + login + "\" ON \"" + date + "\"";
                 data.setAssigned(login, week, getCount(jql));
             }
         }
@@ -370,13 +403,6 @@ private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
         try {
             JSONObject json = searchJira(jql, 0, 0, null);
             int total = (json != null) ? json.getInt("total") : 0;
-
-            // LOG DE DEBUG : À supprimer après correction
-            if (jql.contains("-8d")) {
-                System.out.println("  [DEBUG JQL STALE] : " + jql);
-                System.out.println("  [DEBUG RESULT] : " + total + " tickets trouvés");
-            }
-
             return total;
         } catch (Exception e) {
             return 0;
@@ -433,6 +459,13 @@ private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
         public String login, fullName;
         public Map<Integer, Double> timePerWeek = new HashMap<>();
         public Map<Integer, Integer> assignedPerWeek = new HashMap<>();
+    }
+
+    // À ajouter dans ResourcePlanningService.java
+    public static class CapacityAlerts {
+
+        public List<SufferingTheme> underCapacity = new ArrayList<>();
+        public List<SufferingTheme> overCapacity = new ArrayList<>();
     }
 
 }

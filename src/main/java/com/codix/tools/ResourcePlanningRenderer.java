@@ -13,7 +13,7 @@ public class ResourcePlanningRenderer {
     private static final String COL_RED_KPI = "#e74c3c";
     private static final String COL_OUTLOOK = "#0078d4";
 
-    public void generate(ResourcePlanningService.ReportData data, List<SufferingTheme> suffering, String filename) {
+    public void generate(ResourcePlanningService.ReportData data, ResourcePlanningService.CapacityAlerts alerts, String filename) {
         StringBuilder html = new StringBuilder();
         String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
 
@@ -58,7 +58,7 @@ public class ResourcePlanningRenderer {
         html.append("<div class='meta'>Généré le : ").append(dateGeneration).append("</div>");
 
         // 1. Dashboard KPI (incluant l'alerte Suffering)
-        appendDashboard(html, data.dashboard, suffering);
+        appendDashboard(html, data.dashboard, alerts);
 
         // 2. Tableau par thèmes
         html.append("<h2>Number of tickets MEP1+MEP2 by theme</h2>");
@@ -82,7 +82,7 @@ public class ResourcePlanningRenderer {
         }
     }
 
-    private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis, List<SufferingTheme> suffering) {
+    private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis, ResourcePlanningService.CapacityAlerts alerts) {
         html.append("<div class='dashboard'>");
         appendKpiCard(html, "New tickets assigned to Codix", kpis.stockWeb, false, false);
         appendKpiCard(html, "Answers sent from Codix to LOCAM", kpis.replies, true, false);
@@ -90,27 +90,41 @@ public class ResourcePlanningRenderer {
         appendKpiCard(html, "Number of web tickets assigned to BTTEAM", kpis.stockGlobal, false, false);
         appendKpiCard(html, "% without answers > 7d assigned to BTTEAM", kpis.stalePercent, false, true);
 
-        // Ajout de l'encart de tension si nécessaire
-        if (suffering != null && !suffering.isEmpty()) {
-            appendSufferingKpiCard(html, suffering);
+        // Masquer l'encart si aucune alerte de sous ou sur capacité n'est présente
+        if (alerts != null && (!alerts.underCapacity.isEmpty() || !alerts.overCapacity.isEmpty())) {
+            appendSufferingKpiCard(html, alerts);
         }
 
         html.append("</div>");
     }
 
-    private void appendSufferingKpiCard(StringBuilder html, List<SufferingTheme> suffering) {
-        html.append("<div class='kpi-card' style='border-top: 4px solid ").append(COL_RED_KPI).append("; text-align: left;'>");
-        html.append("<div class='kpi-title' style='color:").append(COL_RED_KPI).append("; justify-content: flex-start;'>UNDER-CAPACITY THEMES (JANUARY FORECAST)</div>");
-
-        html.append("<div style='padding-top: 5px;'>");
-        for (SufferingTheme st : suffering) {
-            html.append("<div style='margin-bottom: 8px; font-size: 13px; border-bottom: 1px ghostwhite solid; padding-bottom: 3px;'>");
-            html.append("<b style='color:#333;'>").append(st.getName()).append("</b> : ");
-            html.append("<span style='color:").append(COL_RED_KPI).append("; font-weight:bold;'>+").append(String.format("%.1f", st.getExtraResources())).append(" resources needed</span>");
+    private void appendSufferingKpiCard(StringBuilder html, ResourcePlanningService.CapacityAlerts alerts) {
+        html.append("<div class='kpi-card' style='border-top: 4px solid ").append(COL_RED_KPI).append("; text-align: left; min-width: 550px; flex: 2.5;'>");
+        html.append("<div class='kpi-title' style='color:").append(COL_RED_KPI).append("; justify-content: flex-start; margin-bottom: 15px;'>THEME CAPACITY STATUS (JANUARY FORECAST)</div>");
+        // AJOUT DE LA LÉGENDE SOUS LE TITRE
+        html.append("<div style='font-size: 10px; color: #888; margin-bottom: 12px; font-style: italic;'>Ratio: workload (tickets × median weight) / real capacity (presence × % specialization).</div>");
+        html.append("<div style='display: flex; gap: 20px;'>");
+        
+        
+        // Colonne Sous-capacité
+        html.append("<div style='flex: 1;'>");
+        html.append("<div style='font-size: 11px; font-weight: 700; color: #c0392b; margin-bottom: 8px;'>⚠️ UNDER-CAPACITY (OVERLOAD)</div>");
+        for (SufferingTheme st : alerts.underCapacity) {
+            html.append("<div style='background: #fff5f5; padding: 8px; border-radius: 4px; border: 1px solid #ffccd5; margin-bottom: 5px; font-size: 12px;'>");
+            html.append("<b>").append(st.getName()).append("</b>: <span style='color:#c0392b; font-weight:bold;'>+").append(String.format("%.1f", st.getExtraResources())).append(" res. needed</span>");
             html.append("</div>");
         }
         html.append("</div>");
-        html.append("</div>");
+
+        // Colonne Surcapacité
+        html.append("<div style='flex: 1; border-left: 1px solid #eee; padding-left: 15px;'>");
+        html.append("<div style='font-size: 11px; font-weight: 700; color: ").append(COL_GREEN).append("; margin-bottom: 8px;'>✅ OVER-CAPACITY (AVAILABLE)</div>");
+        for (SufferingTheme st : alerts.overCapacity) {
+            html.append("<div style='background: #f0fff4; padding: 8px; border-radius: 4px; border: 1px solid #c6f6d5; margin-bottom: 5px; font-size: 12px;'>");
+            html.append("<b>").append(st.getName()).append("</b>: <span style='color:").append(COL_GREEN).append("; font-weight:bold;'>").append(String.format("%.1f", Math.abs(st.getExtraResources()))).append(" res. available</span>");
+            html.append("</div>");
+        }
+        html.append("</div></div></div>");
     }
 
     private void appendKpiCard(StringBuilder html, String title, ResourcePlanningService.KpiMetric metric, boolean higherIsBetter, boolean isPercent) {
@@ -189,89 +203,97 @@ public class ResourcePlanningRenderer {
     }
 
     private void appendDetailTable(StringBuilder html, PlanningData data) {
-    // Calcul des totaux pour l'activité passée et le stock
-    Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
-    Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
-    
-    for (Integer w : data.weeks) {
-        totalTimeWeek.put(w, 0.0);
-        totalAssignedWeek.put(w, 0);
-    }
+        // Calcul des totaux pour l'activité passée et le stock
+        Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
+        Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
 
-    for (ResourcePlanningService.UserStats u : data.userStats.values()) {
         for (Integer w : data.weeks) {
-            totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
-            totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
+            totalTimeWeek.put(w, 0.0);
+            totalAssignedWeek.put(w, 0);
         }
-    }
 
-    html.append("<table><thead>");
+        for (ResourcePlanningService.UserStats u : data.userStats.values()) {
+            for (Integer w : data.weeks) {
+                totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
+                totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
+            }
+        }
 
-    // Ligne d'en-tête 1 : Groupement des catégories
-    html.append("<tr>");
-    html.append("<th rowspan='2' style='background:white; border:none;'></th>");
-    html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Past Activity (Days)</th>");
-    html.append("<th colspan='").append(data.nextWeeks.size()).append("' class='sep-border' style='background-color:#f39c12'>Upcoming Absences (Next 4 Weeks)</th>");
-    html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Current Stock (Assigned)</th>");
-    html.append("</tr>");
+        html.append("<table><thead>");
 
-    // Ligne d'en-tête 2 : Numéros de semaines
-    html.append("<tr>");
-    for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
-    for (Integer w : data.nextWeeks) html.append("<th style='background-color:#e67e22'>W").append(w).append("</th>");
-    for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
-    html.append("</tr></thead><tbody>");
-
-    // Lignes de données par collaborateur
-    for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
-        ResourcePlanningService.UserStats user = data.userStats.get(login);
-        if (user == null) continue;
-
+        // Ligne d'en-tête 1 : Groupement des catégories
         html.append("<tr>");
-        html.append("<td class='row-name'>").append(user.fullName).append("</td>");
-
-        // 1. Bloc Activité Passée (Heatmap verte)
-        for (Integer w : data.weeks) {
-            double val = user.timePerWeek.getOrDefault(w, 0.0);
-            html.append("<td style='background-color:").append(getGreenHeatmap(val)).append("'>");
-            html.append(val > 0.05 ? String.format("%.1f", val) : "0,0").append("</td>");
-        }
-
-        // 2. Bloc Absences Futures (Indicateur rouge "ABS")
-        for (Integer w : data.nextWeeks) {
-            boolean isAbsent = data.userAbsences.containsKey(login) && data.userAbsences.get(login).contains(w);
-            String bgColor = isAbsent ? "#e74c3c" : "#ecf0f1"; // Rouge si absent, gris clair sinon
-            String text = isAbsent ? "<b style='color:white'>ABS</b>" : "";
-            html.append("<td style='background-color:").append(bgColor).append("'>").append(text).append("</td>");
-        }
-
-        // 3. Bloc Stock Actuel (Heatmap rouge)
-        for (Integer w : data.weeks) {
-            int val = user.assignedPerWeek.getOrDefault(w, 0);
-            html.append("<td class='sep-border' style='background-color:").append(getRedHeatmap(val)).append("'>");
-            html.append(val).append("</td>");
-        }
+        html.append("<th rowspan='2' style='background:white; border:none;'></th>");
+        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Past Activity (Days)</th>");
+        html.append("<th colspan='").append(data.nextWeeks.size()).append("' class='sep-border' style='background-color:#f39c12'>Upcoming Absences (Next 4 Weeks)</th>");
+        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Current Stock (Assigned)</th>");
         html.append("</tr>");
-    }
 
-    // Ligne de TOTAL au bas du tableau
-    html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
-    
-    // Totaux Activité
-    for (Integer w : data.weeks) {
-        html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
+        // Ligne d'en-tête 2 : Numéros de semaines
+        html.append("<tr>");
+        for (Integer w : data.weeks) {
+            html.append("<th class='sep-border'>W").append(w).append("</th>");
+        }
+        for (Integer w : data.nextWeeks) {
+            html.append("<th style='background-color:#e67e22'>W").append(w).append("</th>");
+        }
+        for (Integer w : data.weeks) {
+            html.append("<th class='sep-border'>W").append(w).append("</th>");
+        }
+        html.append("</tr></thead><tbody>");
+
+        // Lignes de données par collaborateur
+        for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
+            ResourcePlanningService.UserStats user = data.userStats.get(login);
+            if (user == null) {
+                continue;
+            }
+
+            html.append("<tr>");
+            html.append("<td class='row-name'>").append(user.fullName).append("</td>");
+
+            // 1. Bloc Activité Passée (Heatmap verte)
+            for (Integer w : data.weeks) {
+                double val = user.timePerWeek.getOrDefault(w, 0.0);
+                html.append("<td style='background-color:").append(getGreenHeatmap(val)).append("'>");
+                html.append(val > 0.05 ? String.format("%.1f", val) : "0,0").append("</td>");
+            }
+
+            // 2. Bloc Absences Futures (Indicateur rouge "ABS")
+            for (Integer w : data.nextWeeks) {
+                boolean isAbsent = data.userAbsences.containsKey(login) && data.userAbsences.get(login).contains(w);
+                String bgColor = isAbsent ? "#e74c3c" : "#ecf0f1"; // Rouge si absent, gris clair sinon
+                String text = isAbsent ? "<b style='color:white'>ABS</b>" : "";
+                html.append("<td style='background-color:").append(bgColor).append("'>").append(text).append("</td>");
+            }
+
+            // 3. Bloc Stock Actuel (Heatmap rouge)
+            for (Integer w : data.weeks) {
+                int val = user.assignedPerWeek.getOrDefault(w, 0);
+                html.append("<td class='sep-border' style='background-color:").append(getRedHeatmap(val)).append("'>");
+                html.append(val).append("</td>");
+            }
+            html.append("</tr>");
+        }
+
+        // Ligne de TOTAL au bas du tableau
+        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
+
+        // Totaux Activité
+        for (Integer w : data.weeks) {
+            html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
+        }
+        // Cases vides pour les absences futures (Pas de total possible)
+        for (Integer w : data.nextWeeks) {
+            html.append("<td style='background-color:#eee;'></td>");
+        }
+        // Totaux Stock
+        for (Integer w : data.weeks) {
+            html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
+        }
+
+        html.append("</tr></tbody></table>");
     }
-    // Cases vides pour les absences futures (Pas de total possible)
-    for (Integer w : data.nextWeeks) {
-        html.append("<td style='background-color:#eee;'></td>");
-    }
-    // Totaux Stock
-    for (Integer w : data.weeks) {
-        html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
-    }
-    
-    html.append("</tr></tbody></table>");
-}
 
     private String getGreenHeatmap(double val) {
         if (val <= 0.05) {

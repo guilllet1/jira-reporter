@@ -49,12 +49,14 @@ public class ResourcePlanningApp {
             Map<String, Integer> absencesJanvier = service.parseHRAbsences(hrFile, "202601");
 
             System.out.println("[6/7] Calcul de la tension et identification des thèmes en souffrance...");
-            List<SufferingTheme> sufferingThemes = service.calculateSufferingThemes(
-                    jqlOpen,
-                    teamSpecs,
-                    absencesJanvier,
-                    22.0
-            );
+            // Remplace l'ancien appel par celui-ci
+    System.out.println("[6/7] Calcul de la tension et identification des alertes de capacité...");
+ResourcePlanningService.CapacityAlerts capacityAlerts = service.calculateCapacityAlerts(
+        jqlOpen,
+        teamSpecs,
+        absencesJanvier,
+        22.0
+);
 
             System.out.println("[6.1/7] Analyse des absences futures pour le tableau de bord...");
             // Récupération des absences pour le mois en cours et le mois suivant
@@ -72,7 +74,7 @@ public class ResourcePlanningApp {
             });
 
             System.out.println("[7/7] Génération du rapport HTML final...");
-            renderer.generate(data, sufferingThemes, outputFile);
+            renderer.generate(data, capacityAlerts, outputFile);
 
             System.out.println("\n✅ ANALYSE TERMINÉE AVEC SUCCÈS");
             System.out.println("Rapport disponible : " + outputFile);
