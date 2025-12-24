@@ -9,6 +9,7 @@ public class ResourcePlanningApp {
 
     public static void main(String[] args) {
         try {
+            // Configuration obligatoire pour le support UTF-8 et les logs Codix
             System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
         } catch (Exception e) {
@@ -41,7 +42,7 @@ public class ResourcePlanningApp {
             Map<String, Map<String, Double>> teamSpecs = getTeamSpecialization();
 
             System.out.println("[4/7] Analyse du stock de tickets ouverts...");
-            // Dans le main de ResourcePlanningApp.java
+            // Filtre JQL excluant les tickets déjà répondus par Codix et les CRQ
             String jqlOpen = "project = LOCAMWEB AND status NOT IN (Closed, Cancel, Pending, \"Replied by CODIX\") AND type != CRQ";
 
             System.out.println("[5/7] Lecture du fichier HR (Absences Janvier 2026)...");
@@ -55,6 +56,21 @@ public class ResourcePlanningApp {
                     22.0
             );
 
+            System.out.println("[6.1/7] Analyse des absences futures pour le tableau de bord...");
+            // Récupération des absences pour le mois en cours et le mois suivant
+            Map<String, Integer> nextMonthAbs = service.parseHRAbsences(hrFile, "202601");
+
+            // Marquage des semaines futures si un collaborateur est absent
+            // On utilise data.planning pour accéder aux listes de PlanningData
+            data.planning.nextWeeks.forEach(wNum -> {
+                data.planning.userStats.keySet().forEach(login -> {
+                    // Si le collaborateur a plus de 2 jours d'absence dans le fichier HR pour Janvier
+                    if (nextMonthAbs.getOrDefault(login, 0) > 2) {
+                        data.planning.markAbsent(login, wNum);
+                    }
+                });
+            });
+
             System.out.println("[7/7] Génération du rapport HTML final...");
             renderer.generate(data, sufferingThemes, outputFile);
 
@@ -67,6 +83,9 @@ public class ResourcePlanningApp {
         }
     }
 
+    /**
+     * Spécialisation de l'équipe basée sur l'historique des worklogs (Analyse Top 3).
+     */
     private static Map<String, Map<String, Double>> getTeamSpecialization() {
         Map<String, Map<String, Double>> specs = new HashMap<>();
 

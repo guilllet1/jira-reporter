@@ -188,53 +188,90 @@ public class ResourcePlanningRenderer {
         return "<td style='background-color:" + color + "'>" + val + "</td>";
     }
 
-    private void appendDetailTable(StringBuilder html, ResourcePlanningService.PlanningData data) {
-        Map<Integer, Double> totalTimeWeek = new HashMap<>();
-        Map<Integer, Integer> totalAssignedWeek = new HashMap<>();
-        for (Integer w : data.weeks) {
-            totalTimeWeek.put(w, 0.0);
-            totalAssignedWeek.put(w, 0);
-        }
-        for (ResourcePlanningService.UserStats u : data.userStats.values()) {
-            for (Integer w : data.weeks) {
-                totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
-                totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
-            }
-        }
-        html.append("<table><thead><tr><th rowspan='2' style='background:white; border:none;'></th><th colspan='").append(data.weeks.size()).append("' class='sep-border'>Time spent on LOCAM (J/H)</th><th colspan='").append(data.weeks.size()).append("' class='sep-border'>Tickets assigned (DEV+WEB)</th></tr><tr>");
-        for (Integer w : data.weeks) {
-            html.append("<th class='sep-border'>W").append(w).append("</th>");
-        }
-        for (Integer w : data.weeks) {
-            html.append("<th class='sep-border'>W").append(w).append("</th>");
-        }
-        html.append("</tr></thead><tbody>");
-
-        for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
-            ResourcePlanningService.UserStats user = data.userStats.get(login);
-            if (user == null) {
-                continue;
-            }
-            html.append("<tr><td class='row-name'>").append(user.fullName).append("</td>");
-            for (int i = 0; i < data.weeks.size(); i++) {
-                double val = user.timePerWeek.getOrDefault(data.weeks.get(i), 0.0);
-                html.append("<td class='").append(i == 0 ? "sep-border" : "").append("' style='background-color:").append(getGreenHeatmap(val)).append("'>").append(val > 0.05 ? String.format("%.1f", val) : "0,0").append("</td>");
-            }
-            for (int i = 0; i < data.weeks.size(); i++) {
-                int val = user.assignedPerWeek.getOrDefault(data.weeks.get(i), 0);
-                html.append("<td class='").append(i == 0 ? "sep-border" : "").append("' style='background-color:").append(getRedHeatmap(val)).append("'>").append(val).append("</td>");
-            }
-            html.append("</tr>");
-        }
-        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
-        for (Integer w : data.weeks) {
-            html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
-        }
-        for (Integer w : data.weeks) {
-            html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
-        }
-        html.append("</tr></tbody></table>");
+    private void appendDetailTable(StringBuilder html, PlanningData data) {
+    // Calcul des totaux pour l'activité passée et le stock
+    Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
+    Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
+    
+    for (Integer w : data.weeks) {
+        totalTimeWeek.put(w, 0.0);
+        totalAssignedWeek.put(w, 0);
     }
+
+    for (ResourcePlanningService.UserStats u : data.userStats.values()) {
+        for (Integer w : data.weeks) {
+            totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
+            totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
+        }
+    }
+
+    html.append("<table><thead>");
+
+    // Ligne d'en-tête 1 : Groupement des catégories
+    html.append("<tr>");
+    html.append("<th rowspan='2' style='background:white; border:none;'></th>");
+    html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Past Activity (Days)</th>");
+    html.append("<th colspan='").append(data.nextWeeks.size()).append("' class='sep-border' style='background-color:#f39c12'>Upcoming Absences (Next 4 Weeks)</th>");
+    html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Current Stock (Assigned)</th>");
+    html.append("</tr>");
+
+    // Ligne d'en-tête 2 : Numéros de semaines
+    html.append("<tr>");
+    for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
+    for (Integer w : data.nextWeeks) html.append("<th style='background-color:#e67e22'>W").append(w).append("</th>");
+    for (Integer w : data.weeks) html.append("<th class='sep-border'>W").append(w).append("</th>");
+    html.append("</tr></thead><tbody>");
+
+    // Lignes de données par collaborateur
+    for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
+        ResourcePlanningService.UserStats user = data.userStats.get(login);
+        if (user == null) continue;
+
+        html.append("<tr>");
+        html.append("<td class='row-name'>").append(user.fullName).append("</td>");
+
+        // 1. Bloc Activité Passée (Heatmap verte)
+        for (Integer w : data.weeks) {
+            double val = user.timePerWeek.getOrDefault(w, 0.0);
+            html.append("<td style='background-color:").append(getGreenHeatmap(val)).append("'>");
+            html.append(val > 0.05 ? String.format("%.1f", val) : "0,0").append("</td>");
+        }
+
+        // 2. Bloc Absences Futures (Indicateur rouge "ABS")
+        for (Integer w : data.nextWeeks) {
+            boolean isAbsent = data.userAbsences.containsKey(login) && data.userAbsences.get(login).contains(w);
+            String bgColor = isAbsent ? "#e74c3c" : "#ecf0f1"; // Rouge si absent, gris clair sinon
+            String text = isAbsent ? "<b style='color:white'>ABS</b>" : "";
+            html.append("<td style='background-color:").append(bgColor).append("'>").append(text).append("</td>");
+        }
+
+        // 3. Bloc Stock Actuel (Heatmap rouge)
+        for (Integer w : data.weeks) {
+            int val = user.assignedPerWeek.getOrDefault(w, 0);
+            html.append("<td class='sep-border' style='background-color:").append(getRedHeatmap(val)).append("'>");
+            html.append(val).append("</td>");
+        }
+        html.append("</tr>");
+    }
+
+    // Ligne de TOTAL au bas du tableau
+    html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
+    
+    // Totaux Activité
+    for (Integer w : data.weeks) {
+        html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
+    }
+    // Cases vides pour les absences futures (Pas de total possible)
+    for (Integer w : data.nextWeeks) {
+        html.append("<td style='background-color:#eee;'></td>");
+    }
+    // Totaux Stock
+    for (Integer w : data.weeks) {
+        html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
+    }
+    
+    html.append("</tr></tbody></table>");
+}
 
     private String getGreenHeatmap(double val) {
         if (val <= 0.05) {

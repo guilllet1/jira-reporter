@@ -244,38 +244,68 @@ public class ResourcePlanningService {
 
         String userList = "\"" + String.join("\", \"", TARGET_USERS.keySet()) + "\"";
 
+        // 1. Nouveaux tickets
         kpis.stockWeb.current = getCount("project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startStr + "\", \"" + endStr + "\")");
         kpis.stockWeb.previous = getCount("project = LOCAMWEB AND type != CRQ AND assignee changed to hotline DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")");
 
+        // 2. Réponses Codix
         kpis.replies.current = getCount("project in (" + projects + ") AND status changed to \"Replied by CODIX\" DURING (\"" + startStr + "\", \"" + endStr + "\")");
         kpis.replies.previous = getCount("project in (" + projects + ") AND status changed to \"Replied by CODIX\" DURING (\"" + startPrevStr + "\", \"" + endPrevStr + "\")");
 
-        kpis.stockGlobal.current = getCount("project = LOCAMWEB AND status in (Open, Reopened) AND assignee IN (" + userList + ")");
-        kpis.stockGlobal.previous = getCount("project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"");
+        // 3. Stock Global assigné à l'équipe
+        kpis.stockGlobal.current = getCount("project = LOCAMWEB AND status in (Open, Reopened) AND type != CRQ AND assignee IN (" + userList + ")");
+        kpis.stockGlobal.previous = getCount("project = LOCAMWEB AND status was in (Open, Reopened) ON \"" + endPrevStr + "\" AND type != CRQ AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"");
+
+        // --- AJOUT DU CALCUL STALE % (Tickets sans réponse > 7 jours ouvrés / 8 jours calendaires) ---
+        if (kpis.stockGlobal.current > 0) {
+            String jqlStale = "project = LOCAMWEB AND status in (Open, Reopened) "
+                    + "AND \"Reopened/Updated by Client\" <= -8d "
+                    + "AND type != CRQ AND assignee IN (" + userList + ")";
+
+            double staleCount = getCount(jqlStale);
+
+            // Log de debug pour vérifier tes 17 tickets
+            System.out.println("  [DEBUG KPI] Tickets Stale trouvés : " + (int) staleCount + " sur un stock de " + (int) kpis.stockGlobal.current);
+
+            kpis.stalePercent.current = (staleCount / kpis.stockGlobal.current) * 100.0;
+        }
 
         return kpis;
     }
 
-    private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
-        PlanningData data = new PlanningData();
-        LocalDate today = LocalDate.now();
-        for (int i = nbWeeks - 1; i >= 0; i--) {
-            LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
-            LocalDate startOfWeek = endOfWeek.minusDays(6);
-            int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
-            data.weeks.add(weekNum);
-            data.weekDates.put(weekNum, new WeekRange(startOfWeek, endOfWeek));
-        }
-        TARGET_USERS.forEach((login, name) -> {
-            UserStats u = new UserStats();
-            u.login = login;
-            u.fullName = name;
-            data.userStats.put(login, u);
-        });
-        analyzeTimeSpent(projectKeys, data);
-        analyzeAssignedStock(projectKeys, data);
-        return data;
+    // Mise à jour de la méthode getPlanningData
+private PlanningData getPlanningData(String projectKeys, int nbWeeks) {
+    PlanningData data = new PlanningData();
+    LocalDate today = LocalDate.now();
+
+    // 1. Semaines passées (Historique)
+    for (int i = nbWeeks - 1; i >= 0; i--) {
+        LocalDate endOfWeek = today.minusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
+        LocalDate startOfWeek = endOfWeek.minusDays(6);
+        int weekNum = endOfWeek.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+        data.weeks.add(weekNum);
+        data.weekDates.put(weekNum, new WeekRange(startOfWeek, endOfWeek));
     }
+
+    // 2. NOUVEAU : 4 Prochaines semaines (Prévisionnel)
+    for (int i = 1; i <= 4; i++) {
+        LocalDate nextEnd = today.plusWeeks(i).with(WeekFields.of(Locale.FRANCE).dayOfWeek(), 7);
+        LocalDate nextStart = nextEnd.minusDays(6);
+        int weekNum = nextEnd.get(WeekFields.of(Locale.FRANCE).weekOfWeekBasedYear());
+        data.nextWeeks.add(weekNum);
+        data.weekDates.put(weekNum, new WeekRange(nextStart, nextEnd));
+    }
+
+    TARGET_USERS.forEach((login, name) -> {
+        UserStats u = new UserStats(); u.login = login; u.fullName = name;
+        data.userStats.put(login, u);
+    });
+
+    analyzeTimeSpent(projectKeys, data);
+    analyzeAssignedStock(projectKeys, data);
+    
+    return data;
+}
 
     private void analyzeTimeSpent(String projects, PlanningData data) {
         LocalDate globalStart = data.weekDates.get(data.weeks.get(0)).start;
@@ -339,7 +369,15 @@ public class ResourcePlanningService {
     private int getCount(String jql) {
         try {
             JSONObject json = searchJira(jql, 0, 0, null);
-            return json != null ? json.getInt("total") : 0;
+            int total = (json != null) ? json.getInt("total") : 0;
+
+            // LOG DE DEBUG : À supprimer après correction
+            if (jql.contains("-8d")) {
+                System.out.println("  [DEBUG JQL STALE] : " + jql);
+                System.out.println("  [DEBUG RESULT] : " + total + " tickets trouvés");
+            }
+
+            return total;
         } catch (Exception e) {
             return 0;
         }
@@ -397,22 +435,4 @@ public class ResourcePlanningService {
         public Map<Integer, Integer> assignedPerWeek = new HashMap<>();
     }
 
-    public static class PlanningData {
-
-        public List<Integer> weeks = new ArrayList<>();
-        public Map<Integer, WeekRange> weekDates = new HashMap<>();
-        public Map<String, UserStats> userStats = new LinkedHashMap<>();
-
-        public void addTime(String login, int w, double d) {
-            if (userStats.containsKey(login)) {
-                userStats.get(login).timePerWeek.merge(w, d, Double::sum);
-            }
-        }
-
-        public void setAssigned(String login, int w, int c) {
-            if (userStats.containsKey(login)) {
-                userStats.get(login).assignedPerWeek.put(w, c);
-            }
-        }
-    }
 }
