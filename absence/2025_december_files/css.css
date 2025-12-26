@@ -1,0 +1,29 @@
+@import url('main.css');
+@import url('login_logout.css');
+@import url('employee_profile.css');
+@import url('admin.css');
+@import url('trainer.css');
+/*@import url('trainings.css');*/
+@import url('menu_style.css');
+/* @import url('hr_admin.css'); */
+
+@import url('../hotline/css/parking.css');
+@import url('../hotline/css/3g.css');
+@import url('../hotline/css/adsl.css');
+@import url('../hotline/css/laptop.css');
+
+/* @import url('../extra_hours/css/eh_main.css'); */
+@import url('../extra_hours/css/eh_insert.css');
+@import url('../extra_hours/css/emergency_form.css');
+@import url('../extra_hours/css/eh_reports.css');
+@import url('../extra_hours/css/eh_settings.css');
+@import url('../extra_hours/css/days_for_use.css');
+
+@import url('../meeting_rooms/css/mr_main.css');
+@import url('../meeting_rooms/css/overlibForm.css');
+
+/* Leaves */
+@import url('../leaves/css/lv.css');
+
+/* Administration */
+@import url('../administration/css/adm.css');

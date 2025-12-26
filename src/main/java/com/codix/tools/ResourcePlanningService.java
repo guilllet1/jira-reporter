@@ -69,36 +69,60 @@ public class ResourcePlanningService {
         "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4",
         "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"
     };
-    
+
     private static final Map<String, Double> THEME_MEDIANS = new HashMap<>();
-static {
-    THEME_MEDIANS.put("AD", 0.08);
-    THEME_MEDIANS.put("AUTRES", 0.21);
-    THEME_MEDIANS.put("ELLISPHERE", 0.48);
-    THEME_MEDIANS.put("GED", 0.55);
-    THEME_MEDIANS.put("TH1", 0.38);
-    THEME_MEDIANS.put("TH10", 0.73);
-    THEME_MEDIANS.put("TH11", 0.43);
-    THEME_MEDIANS.put("TH12", 0.13);
-    THEME_MEDIANS.put("TH13", 0.23);
-    THEME_MEDIANS.put("TH14", 0.32);
-    THEME_MEDIANS.put("TH16_API", 0.49);
-    THEME_MEDIANS.put("TH16_Interfaces", 0.61);
-    THEME_MEDIANS.put("TH17_Migration", 0.33);
-    THEME_MEDIANS.put("TH18", 0.18);
-    THEME_MEDIANS.put("TH19", 0.42);
-    THEME_MEDIANS.put("TH2", 0.46);
-    THEME_MEDIANS.put("TH20", 0.31);
-    THEME_MEDIANS.put("TH3", 0.55);
-    THEME_MEDIANS.put("TH5.1", 0.24);
-    THEME_MEDIANS.put("TH5.2", 0.25);
-    THEME_MEDIANS.put("TH6.1", 0.26);
-    THEME_MEDIANS.put("TH6.2", 0.36);
-    THEME_MEDIANS.put("TH6.3", 0.24);
-    THEME_MEDIANS.put("TH7", 0.52);
-    THEME_MEDIANS.put("TH8", 0.30);
-    THEME_MEDIANS.put("TRANSVERSE", 1.55);
-}
+
+    static {
+        THEME_MEDIANS.put("AD", 0.08);
+        THEME_MEDIANS.put("AUTRES", 0.21);
+        THEME_MEDIANS.put("ELLISPHERE", 0.48);
+        THEME_MEDIANS.put("GED", 0.55);
+        THEME_MEDIANS.put("TH1", 0.38);
+        THEME_MEDIANS.put("TH10", 0.73);
+        THEME_MEDIANS.put("TH11", 0.43);
+        THEME_MEDIANS.put("TH12", 0.13);
+        THEME_MEDIANS.put("TH13", 0.23);
+        THEME_MEDIANS.put("TH14", 0.32);
+        THEME_MEDIANS.put("TH16_API", 0.49);
+        THEME_MEDIANS.put("TH16_Interfaces", 0.61);
+        THEME_MEDIANS.put("TH17_Migration", 0.33);
+        THEME_MEDIANS.put("TH18", 0.18);
+        THEME_MEDIANS.put("TH19", 0.42);
+        THEME_MEDIANS.put("TH2", 0.46);
+        THEME_MEDIANS.put("TH20", 0.31);
+        THEME_MEDIANS.put("TH3", 0.55);
+        THEME_MEDIANS.put("TH5.1", 0.24);
+        THEME_MEDIANS.put("TH5.2", 0.25);
+        THEME_MEDIANS.put("TH6.1", 0.26);
+        THEME_MEDIANS.put("TH6.2", 0.36);
+        THEME_MEDIANS.put("TH6.3", 0.24);
+        THEME_MEDIANS.put("TH7", 0.52);
+        THEME_MEDIANS.put("TH8", 0.30);
+        THEME_MEDIANS.put("TRANSVERSE", 1.55);
+    }
+
+    private static final List<String> THEMES_LIST = Arrays.asList(
+            "AD", "ELLISPHERE", "GED", "TH1", "TH2", "TH3", "TH4", "TH5.1", "TH5.2",
+            "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TH10", "TH11", "TH12", "TH13",
+            "TH14", "TH16_API", "TH16_Interfaces", "TH17_Migration", "TH18", "TH19",
+            "TH20", "TRANSVERSE"
+    );
+
+    private static final Map<String, String> SPECIAL_MAPPINGS = new HashMap<>();
+
+    static {
+        SPECIAL_MAPPINGS.put("COMPTA", "TH10");
+        SPECIAL_MAPPINGS.put("TH15", "TH10");
+        SPECIAL_MAPPINGS.put("API", "TH16_API");
+        SPECIAL_MAPPINGS.put("ALTECA", "TH16_API");
+        SPECIAL_MAPPINGS.put("BOARD", "TH16_API");
+        SPECIAL_MAPPINGS.put("XNET", "TH19");
+        SPECIAL_MAPPINGS.put("EXTRANET", "TH19");
+        SPECIAL_MAPPINGS.put("SAE", "GED");
+        SPECIAL_MAPPINGS.put("TH.7", "TH7");
+        SPECIAL_MAPPINGS.put("TH.11", "TH11");
+        SPECIAL_MAPPINGS.put("ONLIZ", "TH20");
+    }
 
     public ResourcePlanningService(String jiraUrl, String token) {
         this.jiraUrl = jiraUrl;
@@ -119,50 +143,38 @@ static {
         return report;
     }
 
-    // --- ANALYSE DES ABSENCES (HR) ---
-    public Map<String, Integer> parseHRAbsences(String path, String monthPrefix) throws Exception {
-        Map<String, Integer> absences = new HashMap<>();
-        File input = new File(path);
-        if (!input.exists()) {
-            return absences;
-        }
-
-        Document doc = Jsoup.parse(input, "UTF-8");
-        Elements rows = doc.select("tr:has(td.user_name_td)");
-
-        for (Element row : rows) {
-            String fullName = row.select("td.user_name_td").text().trim();
-
-            // Trouver la clé login correspondant au nom complet
-            String login = TARGET_USERS.entrySet().stream()
-                    .filter(entry -> entry.getValue().equalsIgnoreCase(fullName))
-                    .map(Map.Entry::getKey)
-                    .findFirst().orElse(null);
-
-            if (login != null) {
-                // Compter les cellules de congés (paid, sick, compensation) pour le mois
-                long count = row.select("td[id^=cell_" + monthPrefix + "]").stream()
-                        .filter(td -> td.hasClass("paid_leave") || td.hasClass("sick_leave") || td.hasClass("compensation_leave"))
-                        .count();
-                absences.put(login, (int) count);
-            }
-        }
-        return absences;
-    }
-
     public CapacityAlerts calculateCapacityAlerts(String jql, Map<String, Map<String, Double>> specs, Map<String, Integer> absences, double workingDays) throws IOException {
         CapacityAlerts alerts = new CapacityAlerts();
         Map<String, Integer> themeStock = new HashMap<>();
+        List<String> logsAutres = new ArrayList<>();
 
+        // 1. Récupération du stock Jira
         JSONObject result = searchJira(jql, 0, 1000, null);
         if (result != null && result.has("issues")) {
             JSONArray issues = result.getJSONArray("issues");
             for (int i = 0; i < issues.length(); i++) {
-                String theme = identifyTheme(issues.getJSONObject(i).getJSONObject("fields").optJSONArray("labels"));
+                JSONObject issue = issues.getJSONObject(i);
+                JSONObject fields = issue.getJSONObject("fields");
+
+                // Utilisation de la logique d'identification (Extended conseillée)
+                String theme = identifyThemeExtended(issue, this);
+
+                if ("AUTRES".equals(theme)) {
+                    logsAutres.add(issue.getString("key") + " : " + fields.optString("summary", "Sans titre"));
+                }
+
                 themeStock.put(theme, themeStock.getOrDefault(theme, 0) + 1);
             }
         }
 
+        // Affichage des tickets AUTRES dans la console
+        if (!logsAutres.isEmpty()) {
+            System.out.println("\n--- TICKETS CLASSÉS EN 'AUTRES' (SANS LABEL NI MOT-CLÉ) ---");
+            logsAutres.forEach(t -> System.out.println("  [?] " + t));
+            System.out.println("-----------------------------------------------------------\n");
+        }
+
+        // 2. Calcul de la capacité par thème
         Map<String, Double> themeCapacity = new HashMap<>();
         specs.forEach((login, userSpecs) -> {
             double daysPresent = workingDays - absences.getOrDefault(login, 0);
@@ -172,40 +184,36 @@ static {
         });
 
         List<SufferingTheme> allThemes = new ArrayList<>();
-        themeStock.keySet().stream().filter(t -> !"TH18".equals(t)).forEach(theme -> {
-            int count = themeStock.get(theme);
-            // UTILISATION DE LA MÉDIANE RÉELLE (ou 0.4 par défaut si absent)
-            double mediane = THEME_MEDIANS.getOrDefault(theme, 0.4);
-            double chargeEstimee = count * mediane; 
-            
-            double capacite = themeCapacity.getOrDefault(theme, 0.0);
-            double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
-            
-            // Calcul du gap en ressources (Extra)
-            double extraResources = (chargeEstimee - capacite) / workingDays;
+        themeStock.keySet().stream()
+                .filter(t -> !"TH18".equals(t))
+                .forEach(theme -> {
+                    int count = themeStock.get(theme);
+                    double mediane = THEME_MEDIANS.getOrDefault(theme, 0.4);
+                    double chargeEstimee = count * mediane;
+                    double capacite = themeCapacity.getOrDefault(theme, 0.0);
 
-            // Debug log mis à jour
-            System.out.format("Thème: %-15s | Stock: %2d | Poids: %.2fj | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: %+.2f res%n", 
-                              theme, count, mediane, chargeEstimee, capacite, tension, extraResources);
+                    double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
+                    double extraResources = (chargeEstimee - capacite) / workingDays;
 
-            if (tension > 1.1 && count >= 3) {
-                alerts.underCapacity.add(new SufferingTheme(theme, tension, count, extraResources));
-            } else if (tension < 1.0) {
-                alerts.overCapacity.add(new SufferingTheme(theme, tension, count, extraResources));
-            }
-        });
+                    allThemes.add(new SufferingTheme(theme, tension, count, extraResources));
 
-        // Top 3 Surcharge (Tension > 1.1)
+                    System.out.format("Thème: %-15s | Stock: %2d | Poids: %.2fj | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: %+.2f res%n",
+                            theme, count, mediane, chargeEstimee, capacite, tension, extraResources);
+                });
+
+        // 3. TOP 3 SURCHARGE
         alerts.underCapacity = allThemes.stream()
-                .filter(t -> t.getTension() > 1.1 && t.getTicketCount() >= 3)
-                .sorted(Comparator.comparingDouble(SufferingTheme::getTension).reversed())
-                .limit(3).collect(Collectors.toList());
+                .filter(t -> t.getTicketCount() >= 3 && (t.getTension() > 1.1 || t.getTension() == 99.0))
+                .sorted(Comparator.comparingDouble(SufferingTheme::getExtraResources).reversed())
+                .limit(3)
+                .collect(Collectors.toList());
 
-        // Top 3 Disponibilité (Tension < 1.0)
+        // 4. TOP 3 DISPONIBILITÉ
         alerts.overCapacity = allThemes.stream()
                 .filter(t -> t.getTension() < 1.0)
-                .sorted(Comparator.comparingDouble(SufferingTheme::getTension))
-                .limit(3).collect(Collectors.toList());
+                .sorted(Comparator.comparingDouble(SufferingTheme::getExtraResources))
+                .limit(3)
+                .collect(Collectors.toList());
 
         return alerts;
     }
@@ -221,6 +229,63 @@ static {
                 }
             }
         }
+        return "AUTRES";
+    }
+
+    /**
+     * Identifie le thème d'un ticket avec une logique étendue : 1. Labels JIRA
+     * 2. Thème des tickets liés (is a prerequisite for / depends on issue) 3.
+     * Mots-clés et patterns dans le titre (Summary)
+     */
+    private String identifyThemeExtended(JSONObject issue, ResourcePlanningService service) {
+        JSONObject fields = issue.getJSONObject("fields");
+
+        // 1. Recherche par labels (Logique standard)
+        String theme = service.identifyTheme(fields.optJSONArray("labels"));
+        if (!"AUTRES".equals(theme)) {
+            return theme;
+        }
+
+        // 2. Recherche via les tickets liés (Dépendances)
+        if (fields.has("issuelinks")) {
+            JSONArray links = fields.getJSONArray("issuelinks");
+            for (int j = 0; j < links.length(); j++) {
+                JSONObject link = links.getJSONObject(j);
+                JSONObject linkedIssue = null;
+
+                // On cherche le ticket dont celui-ci dépend ou dont il est le prérequis
+                if (link.has("outwardIssue") && "depends on issue".equals(link.getJSONObject("type").optString("outward"))) {
+                    linkedIssue = link.getJSONObject("outwardIssue");
+                } else if (link.has("inwardIssue") && "is a prerequisite for".equals(link.getJSONObject("type").optString("inward"))) {
+                    linkedIssue = link.getJSONObject("inwardIssue");
+                }
+
+                if (linkedIssue != null && linkedIssue.has("fields")) {
+                    String linkedTheme = service.identifyTheme(linkedIssue.getJSONObject("fields").optJSONArray("labels"));
+                    if (!"AUTRES".equals(linkedTheme)) {
+                        return linkedTheme;
+                    }
+                }
+            }
+        }
+
+        // 3. Recherche par mots-clés dans le titre (Summary)
+        String summary = fields.optString("summary", "").toUpperCase();
+
+        // 3a. Recherche des thèmes standards (TH1, TH2, etc.)
+        for (String t : THEMES_LIST) {
+            if (summary.contains(t.toUpperCase())) {
+                return t;
+            }
+        }
+
+        // 3b. Recherche des mots-clés spéciaux (Logique VBA : COMPTA -> TH10, etc.)
+        for (Map.Entry<String, String> entry : SPECIAL_MAPPINGS.entrySet()) {
+            if (summary.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
         return "AUTRES";
     }
 
@@ -299,6 +364,16 @@ static {
             double staleCount = getCount(jqlStale);
 
             kpis.stalePercent.current = (staleCount / kpis.stockGlobal.current) * 100.0;
+        }
+
+        // Valeur Semaine Dernière (S-1)
+        if (kpis.stockGlobal.previous > 0) {
+            // On cherche les tickets qui étaient stale il y a 7 jours (donc updated <= -15d)
+            String jqlStalePrev = "project = LOCAMWEB AND status WAS IN (Open, Reopened) ON \"" + endPrevStr + "\" "
+                    + "AND \"Reopened/Updated by Client\" <= -15d "
+                    + "AND type != CRQ AND assignee WAS IN (" + userList + ") ON \"" + endPrevStr + "\"";
+            double staleCountPrev = getCount(jqlStalePrev);
+            kpis.stalePercent.previous = (staleCountPrev / kpis.stockGlobal.previous) * 100.0;
         }
 
         return kpis;
@@ -466,6 +541,109 @@ static {
 
         public List<SufferingTheme> underCapacity = new ArrayList<>();
         public List<SufferingTheme> overCapacity = new ArrayList<>();
+    }
+
+    /**
+     * Analyse consolidée du répertoire 'absence' (Absences + Présences). Gère
+     * les correspondances de noms spécifiques pour le HR Center.
+     */
+    public Map<String, Integer> loadHRData(String directoryPath, String monthPrefix, PlanningData data) throws Exception {
+        Map<String, Integer> totalAbsences = new HashMap<>();
+        File folder = new File(directoryPath);
+        if (!folder.exists() || !folder.isDirectory()) {
+            return totalAbsences;
+        }
+
+        File[] files = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".html"));
+        if (files == null) {
+            return totalAbsences;
+        }
+
+        // Collecte des jours de présence uniques par utilisateur et par semaine
+        Map<String, Map<Integer, Set<LocalDate>>> uniquePresenceDays = new HashMap<>();
+
+        // Liste des libellés considérés comme une présence (incluant les activités pro)
+        List<String> presenceLabels = Arrays.asList(
+                "Work From Home", "In office", "Workday",
+                "Business trip", "Client meeting at Codix", "Assistance on remote"
+        );
+
+        for (File file : files) {
+            Document doc = Jsoup.parse(file, "UTF-8");
+            Elements rows = doc.select("tr:has(td.user_name_td)");
+
+            for (Element row : rows) {
+                // Nettoyage du nom (gestion des espaces insécables U+00A0)
+                String fullNameFromHtml = row.select("td.user_name_td").text().trim().replace('\u00A0', ' ');
+
+                // Identification du login avec gestion des cas spécifiques
+                String login = TARGET_USERS.entrySet().stream()
+                        .filter(entry -> {
+                            String targetName = entry.getValue(); // ex: "Valérie Robert"
+
+                            // Correspondance : "Valérie Robert" -> "Valerie Robert"
+                            if (targetName.equalsIgnoreCase("Valérie Robert") && fullNameFromHtml.equalsIgnoreCase("Valerie Robert")) {
+                                return true;
+                            }
+
+                            // Correspondance : "Wafa Ben Fadhloun" -> "Wafa Fadhloun"
+                            if (targetName.equalsIgnoreCase("Wafa Ben Fadhloun") && fullNameFromHtml.equalsIgnoreCase("Wafa Fadhloun")) {
+                                return true;
+                            }
+
+                            return targetName.equalsIgnoreCase(fullNameFromHtml);
+                        })
+                        .map(Map.Entry::getKey).findFirst().orElse(null);
+
+                if (login == null) {
+                    continue;
+                }
+
+                Elements cells = row.select("td[id^=cell_]");
+                for (Element cell : cells) {
+                    String id = cell.id(); // format cell_YYYYMMDD_...
+                    if (id.length() < 13) {
+                        continue;
+                    }
+                    String datePart = id.substring(5, 13);
+
+                    // 1. Absences du mois (pour le calcul de tension)
+                    if (datePart.startsWith(monthPrefix)) {
+                        if (cell.hasClass("paid_leave") || cell.hasClass("sick_leave") || cell.hasClass("compensation_leave")) {
+                            totalAbsences.merge(login, 1, Integer::sum);
+                        }
+                    }
+
+                    // 2. Présences hebdomadaires (pour le calcul du delta)
+                    try {
+                        LocalDate cellDate = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("yyyyMMdd"));
+                        for (Integer weekNum : data.nextWeeks) {
+                            WeekRange range = data.weekDates.get(weekNum);
+                            if (!cellDate.isBefore(range.start) && !cellDate.isAfter(range.end)) {
+                                String title = cell.attr("title").trim();
+                                if (presenceLabels.stream().anyMatch(l -> l.equalsIgnoreCase(title))) {
+                                    uniquePresenceDays.computeIfAbsent(login, k -> new HashMap<>())
+                                            .computeIfAbsent(weekNum, k -> new HashSet<>())
+                                            .add(cellDate);
+                                }
+                                break;
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        // Calcul final des deltas (Présence réelle - 5 jours)
+        for (String login : TARGET_USERS.keySet()) {
+            for (Integer weekNum : data.nextWeeks) {
+                int count = (uniquePresenceDays.containsKey(login) && uniquePresenceDays.get(login).containsKey(weekNum))
+                        ? uniquePresenceDays.get(login).get(weekNum).size() : 0;
+                data.setWeeklyDelta(login, weekNum, count - 5);
+            }
+        }
+        return totalAbsences;
     }
 
 }

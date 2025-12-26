@@ -2,6 +2,8 @@ package com.codix.tools;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.io.PrintStream;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -12,8 +14,15 @@ public class ResourcePlanningRenderer {
     private static final String COL_GREEN = "#27ae60";
     private static final String COL_RED_KPI = "#e74c3c";
     private static final String COL_OUTLOOK = "#0078d4";
+    private static final String COL_ORANGE = "#f39c12";
 
     public void generate(ResourcePlanningService.ReportData data, ResourcePlanningService.CapacityAlerts alerts, String filename) {
+        // Initialisation obligatoire pour le support UTF-8 (Consigne utilisateur)
+        try { 
+            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
+            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
+        } catch (Exception e) { e.printStackTrace(); }
+
         StringBuilder html = new StringBuilder();
         String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
 
@@ -29,99 +38,161 @@ public class ResourcePlanningRenderer {
         html.append(".email-btn:hover { background-color: #005a9e; }");
         html.append(".meta { text-align:right; color:#888; font-size:12px; margin-bottom: 25px; }");
         html.append(".dashboard { display: flex; gap: 15px; margin-bottom: 40px; justify-content: space-between; align-items: stretch; }");
-        html.append(".kpi-card { flex: 1; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center; position: relative; border-top: 4px solid ").append(COL_BLUE).append("; display: flex; flex-direction: column; justify-content: center; }");
-        html.append(".kpi-title { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; font-weight: 600; min-height: 30px; display: flex; align-items: center; justify-content: center; }");
-        html.append(".kpi-value { font-size: 28px; font-weight: 800; color: #2c3e50; margin-bottom: 5px; }");
-        html.append(".kpi-trend { font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 5px; font-weight: 600; }");
-        html.append(".trend-good { color: ").append(COL_GREEN).append("; background: rgba(39, 174, 96, 0.1); padding: 2px 8px; border-radius: 12px; }");
-        html.append(".trend-bad { color: ").append(COL_RED_KPI).append("; background: rgba(231, 76, 60, 0.1); padding: 2px 8px; border-radius: 12px; }");
-        html.append(".trend-neutral { color: #95a5a6; background: rgba(149, 165, 166, 0.1); padding: 2px 8px; border-radius: 12px; }");
-        html.append("h2 { font-size: 18px; color: ").append(COL_BLUE).append("; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }");
-        html.append("table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 0; }");
-        html.append("th { background-color: ").append(COL_BLUE).append("; color: white; padding: 12px 6px; text-align: center; border: 1px solid #0d7ab0; }");
-        html.append("td { padding: 8px 6px; text-align: center; border: 1px solid #ddd; color: #444; }");
-        html.append(".sep-border { border-left: 3px solid #555 !important; }");
-        html.append(".row-name { text-align: left; font-weight: 700; color: ").append(COL_BLUE).append("; width: 220px; padding-left: 15px; background-color:#fff;}");
-        html.append(".total-row td { font-weight: bold; background-color: #eee; border-top: 2px solid #333; }");
+        html.append(".kpi-card { flex: 1; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); text-align: center; border-top: 4px solid ").append(COL_BLUE).append("; display: flex; flex-direction: column; justify-content: center; }");
+        html.append(".kpi-title { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; font-weight: 700; min-height: 30px; display: flex; align-items: center; justify-content: center; }");
+        html.append(".kpi-value { font-size: 26px; font-weight: 800; color: #2c3e50; margin-bottom: 5px; }");
+        html.append(".trend-good { color: ").append(COL_GREEN).append("; background: rgba(39, 174, 96, 0.1); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }");
+        html.append(".trend-bad { color: ").append(COL_RED_KPI).append("; background: rgba(231, 76, 60, 0.1); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }");
+        html.append("h2 { font-size: 16px; color: ").append(COL_BLUE).append("; margin: 30px 0 15px 0; border-bottom: 2px solid #eee; padding-bottom: 8px; text-transform: uppercase; }");
+        html.append("table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; }");
+        html.append("th { color: white; padding: 10px 5px; text-align: center; border: 1px solid rgba(255,255,255,0.2); font-weight: 700; }");
+        html.append("td { padding: 8px 5px; text-align: center; border: 1px solid #ddd; color: #444; }");
+        html.append(".sep-border { border-left: 2px solid #333 !important; }");
+        html.append(".row-name { text-align: left; font-weight: 700; color: ").append(COL_BLUE).append("; width: 220px; padding-left: 15px; background: #fff !important; }");
+        html.append(".total-row td { font-weight: 800; background-color: #f8f9fa; border-top: 2px solid #333; color: #2c3e50; }");
+        html.append(".header-group { font-size: 13px; letter-spacing: 1px; }");
         html.append("</style></head><body>");
 
         html.append("<div class='container'>");
-
-        // Header
         html.append("<div class='header-row'>");
         html.append("<h1>BT TEAM DASHBOARD FOR LOCAM</h1>");
         html.append("<button class='email-btn' onclick='copyReportForEmail()'>📧 Copier pour Outlook</button>");
         html.append("</div>");
 
-        // Zone de capture
         html.append("<div id='capture-area' style='background:white; padding:15px; border-radius:8px;'>");
         html.append("<div class='meta'>Généré le : ").append(dateGeneration).append("</div>");
 
-        // 1. Dashboard KPI (incluant l'alerte Suffering)
         appendDashboard(html, data.dashboard, alerts);
 
-        // 2. Tableau par thèmes
         html.append("<h2>Number of tickets MEP1+MEP2 by theme</h2>");
         appendThemeTable(html, data.themeStats);
 
-        // 3. Tableau détail Planning
         html.append("<h2>Focus on BT Team Members</h2>");
         appendDetailTable(html, data.planning);
 
         html.append("</div>");
-
-        // Script JS
         appendCopyScript(html);
-
         html.append("</div></body></html>");
 
-        try (FileWriter writer = new FileWriter(filename)) {
-            writer.write(html.toString());
-        } catch (IOException e) {
-            e.printStackTrace();
+        try (FileWriter writer = new FileWriter(filename)) { writer.write(html.toString()); } 
+        catch (IOException e) { e.printStackTrace(); }
+    }
+
+    private void appendDetailTable(StringBuilder html, PlanningData data) {
+        Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
+        Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
+        for (Integer w : data.weeks) { totalTimeWeek.put(w, 0.0); totalAssignedWeek.put(w, 0); }
+
+        for (ResourcePlanningService.UserStats u : data.userStats.values()) {
+            for (Integer w : data.weeks) {
+                totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
+                totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
+            }
         }
+
+        html.append("<table><thead>");
+        // Ligne 1 : Groupes
+        html.append("<tr>");
+        html.append("<th style='background:white; border:none;'></th>");
+        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border header-group' style='background:").append(COL_BLUE).append(";'>PAST ACTIVITY (DAYS)</th>");
+        html.append("<th colspan='").append(data.nextWeeks.size()).append("' class='sep-border header-group' style='background:").append(COL_ORANGE).append(";'>UPCOMING ABSENCES</th>");
+        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border header-group' style='background:").append(COL_BLUE).append(";'>CURRENT STOCK (ASSIGNED)</th>");
+        html.append("</tr>");
+
+        // Ligne 2 : Semaines
+        html.append("<tr>");
+        html.append("<th style='background:white; border:none;'></th>");
+        for (Integer w : data.weeks) html.append("<th style='background:").append(COL_BLUE).append("CC; border-left:1px solid #fff3;'>W").append(w).append("</th>");
+        for (Integer w : data.nextWeeks) html.append("<th style='background:").append(COL_ORANGE).append("CC; border-left:1px solid #fff3;'>W").append(w).append("</th>");
+        for (Integer w : data.weeks) html.append("<th style='background:").append(COL_BLUE).append("CC; border-left:1px solid #fff3;'>W").append(w).append("</th>");
+        html.append("</tr></thead><tbody>");
+
+        for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
+            ResourcePlanningService.UserStats user = data.userStats.get(login);
+            if (user == null) continue;
+
+            html.append("<tr>");
+            html.append("<td class='row-name'>").append(user.fullName).append("</td>");
+
+            // 1. Activité Passée
+            for (Integer w : data.weeks) {
+                double val = user.timePerWeek.getOrDefault(w, 0.0);
+                html.append("<td class='").append(w.equals(data.weeks.get(0)) ? "sep-border" : "").append("' style='background-color:").append(getGreenHeatmap(val)).append("; color:").append(val > 3.5 ? "#fff" : "#444").append(";'>");
+                html.append(val > 0.05 ? String.format("%.1f", val) : "-").append("</td>");
+            }
+
+            // 2. Absences (Heatmap Orange/Vert)
+            for (Integer w : data.nextWeeks) {
+                int delta = data.getWeeklyDelta(login, w);
+                html.append("<td class='").append(w.equals(data.nextWeeks.get(0)) ? "sep-border" : "").append("' style='background-color:").append(getOrangeHeatmap(delta)).append("; font-weight:700; color:").append(Math.abs(delta) > 3 ? "#fff" : "#444").append(";'>");
+                html.append(delta == 0 ? "0" : (delta > 0 ? "+" + delta : delta)).append("</td>");
+            }
+
+            // 3. Stock
+            for (Integer w : data.weeks) {
+                int val = user.assignedPerWeek.getOrDefault(w, 0);
+                html.append("<td class='").append(w.equals(data.weeks.get(0)) ? "sep-border" : "").append("' style='background-color:").append(getRedHeatmap(val)).append("; color:").append(val > 12 ? "#fff" : "#444").append(";'>");
+                html.append(val > 0 ? val : "-").append("</td>");
+            }
+            html.append("</tr>");
+        }
+
+        // Pied de tableau : TOTAL
+        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL TEAM</td>");
+        for (Integer w : data.weeks) html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
+        for (Integer w : data.nextWeeks) html.append("<td class='sep-border' style='background:#f1f1f1;'></td>");
+        for (Integer w : data.weeks) html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
+        html.append("</tr></tbody></table>");
+    }
+
+    private String getGreenHeatmap(double val) {
+        if (val <= 0.05) return "#ffffff";
+        double ratio = Math.min(val / 5.0, 1.0);
+        return String.format("#%02x%02x%02x", (int) (255 - (255 - 39) * ratio), (int) (255 - (255 - 174) * ratio), (int) (255 - (255 - 96) * ratio));
+    }
+
+    private String getRedHeatmap(int val) {
+        if (val == 0) return "#ffffff";
+        double ratio = Math.min((double) val / 20.0, 1.0);
+        return String.format("#%02x%02x%02x", (int) (255 - (255 - 231) * ratio), (int) (255 - (255 - 76) * ratio), (int) (255 - (255 - 60) * ratio));
+    }
+
+    private String getOrangeHeatmap(int delta) {
+        if (delta == 0) return "#ffffff";
+        if (delta > 0) return "#e8f5e9";
+        double ratio = Math.min(Math.abs((double) delta) / 5.0, 1.0);
+        return String.format("#ff%02x%02x", (int) (255 - 90 * ratio), (int) (255 - 180 * ratio));
     }
 
     private void appendDashboard(StringBuilder html, ResourcePlanningService.DashboardMetrics kpis, ResourcePlanningService.CapacityAlerts alerts) {
         html.append("<div class='dashboard'>");
         appendKpiCard(html, "New tickets assigned to Codix", kpis.stockWeb, false, false);
-        appendKpiCard(html, "Answers sent from Codix to LOCAM", kpis.replies, true, false);
+        appendKpiCard(html, "Answers sent to LOCAM", kpis.replies, true, false);
         appendKpiCard(html, "Tickets closed by LOCAM", kpis.closed, true, false);
-        appendKpiCard(html, "Number of web tickets assigned to BTTEAM", kpis.stockGlobal, false, false);
-        appendKpiCard(html, "% without answers > 7d assigned to BTTEAM", kpis.stalePercent, false, true);
-
-        // Masquer l'encart si aucune alerte de sous ou sur capacité n'est présente
-        if (alerts != null && (!alerts.underCapacity.isEmpty() || !alerts.overCapacity.isEmpty())) {
-            appendSufferingKpiCard(html, alerts);
-        }
-
+        appendKpiCard(html, "Web tickets BTTEAM", kpis.stockGlobal, false, false);
+        appendKpiCard(html, "% No answer > 7d assigned to BTTEAM", kpis.stalePercent, false, true);
+        if (alerts != null && (!alerts.underCapacity.isEmpty() || !alerts.overCapacity.isEmpty())) appendSufferingKpiCard(html, alerts);
         html.append("</div>");
     }
 
     private void appendSufferingKpiCard(StringBuilder html, ResourcePlanningService.CapacityAlerts alerts) {
         html.append("<div class='kpi-card' style='border-top: 4px solid ").append(COL_RED_KPI).append("; text-align: left; min-width: 550px; flex: 2.5;'>");
-        html.append("<div class='kpi-title' style='color:").append(COL_RED_KPI).append("; justify-content: flex-start; margin-bottom: 15px;'>THEME CAPACITY STATUS (JANUARY FORECAST)</div>");
-        // AJOUT DE LA LÉGENDE SOUS LE TITRE
-        html.append("<div style='font-size: 10px; color: #888; margin-bottom: 12px; font-style: italic;'>Ratio: workload (tickets × median weight) / real capacity (presence × % specialization).</div>");
-        html.append("<div style='display: flex; gap: 20px;'>");
-        
-        
-        // Colonne Sous-capacité
+        html.append("<div class='kpi-title' style='color:").append(COL_RED_KPI).append("; justify-content: flex-start;'>CAPACITY STATUS</div>");
+        html.append("<div style='font-size: 10px; color: #888; margin-bottom: 12px; font-style: italic;'>Ratio: workload (tickets × median) / capacity</div>");
+        html.append("<div style='display: flex; gap: 15px;'>");
         html.append("<div style='flex: 1;'>");
-        html.append("<div style='font-size: 11px; font-weight: 700; color: #c0392b; margin-bottom: 8px;'>⚠️ UNDER-CAPACITY (OVERLOAD)</div>");
+        html.append("<div style='font-size: 10px; font-weight: 700; color: #c0392b; margin-bottom: 5px;'>⚠️ OVERLOAD</div>");
         for (SufferingTheme st : alerts.underCapacity) {
-            html.append("<div style='background: #fff5f5; padding: 8px; border-radius: 4px; border: 1px solid #ffccd5; margin-bottom: 5px; font-size: 12px;'>");
-            html.append("<b>").append(st.getName()).append("</b>: <span style='color:#c0392b; font-weight:bold;'>+").append(String.format("%.1f", st.getExtraResources())).append(" res. needed</span>");
+            html.append("<div style='background: #fff5f5; padding: 5px 8px; border-radius: 4px; border: 1px solid #ffccd5; margin-bottom: 4px; font-size: 11px;'>");
+            html.append("<b>").append(st.getName()).append("</b>: <span style='color:#c0392b;'>+").append(String.format("%.1f", st.getExtraResources())).append(" res. needed</span>");
             html.append("</div>");
         }
         html.append("</div>");
-
-        // Colonne Surcapacité
         html.append("<div style='flex: 1; border-left: 1px solid #eee; padding-left: 15px;'>");
-        html.append("<div style='font-size: 11px; font-weight: 700; color: ").append(COL_GREEN).append("; margin-bottom: 8px;'>✅ OVER-CAPACITY (AVAILABLE)</div>");
+        html.append("<div style='font-size: 10px; font-weight: 700; color: ").append(COL_GREEN).append("; margin-bottom: 5px;'>✅ AVAILABLE</div>");
         for (SufferingTheme st : alerts.overCapacity) {
-            html.append("<div style='background: #f0fff4; padding: 8px; border-radius: 4px; border: 1px solid #c6f6d5; margin-bottom: 5px; font-size: 12px;'>");
-            html.append("<b>").append(st.getName()).append("</b>: <span style='color:").append(COL_GREEN).append("; font-weight:bold;'>").append(String.format("%.1f", Math.abs(st.getExtraResources()))).append(" res. available</span>");
+            html.append("<div style='background: #f0fff4; padding: 5px 8px; border-radius: 4px; border: 1px solid #c6f6d5; margin-bottom: 4px; font-size: 11px;'>");
+            html.append("<b>").append(st.getName()).append("</b>: <span style='color:").append(COL_GREEN).append(";'>").append(String.format("%.1f", Math.abs(st.getExtraResources()))).append(" res. available</span>");
             html.append("</div>");
         }
         html.append("</div></div></div>");
@@ -132,200 +203,32 @@ public class ResourcePlanningRenderer {
         html.append("<div class='kpi-title'>").append(title).append("</div>");
         String valStr = isPercent ? String.format("%.1f%%", metric.current) : String.format("%.0f", metric.current);
         html.append("<div class='kpi-value'>").append(valStr).append("</div>");
-
         double diff = metric.current - metric.previous;
-        String trendHtml;
-        if (metric.previous == 0 && !isPercent) {
-            trendHtml = "<span class='trend-neutral'>-</span>";
-        } else if (Math.abs(diff) < 0.1) {
-            trendHtml = "<span class='trend-neutral'>▶ Stable</span>";
-        } else {
+        if (Math.abs(diff) > 0.1) {
             boolean isGood = higherIsBetter ? (diff > 0) : (diff < 0);
             String arrow = diff > 0 ? "▲" : "▼";
-            String classCss = isGood ? "trend-good" : "trend-bad";
             String diffStr = isPercent ? String.format("%+.1f%%", diff) : String.format("%+.0f", diff);
-            trendHtml = "<span class='" + classCss + "'>" + arrow + " " + diffStr + " vs S-1</span>";
+            html.append("<div><span class='").append(isGood ? "trend-good" : "trend-bad").append("'>").append(arrow).append(" ").append(diffStr).append(" vs S-1</span></div>");
         }
-        html.append("<div class='kpi-trend'>").append(trendHtml).append("</div>");
         html.append("</div>");
     }
 
     private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
-        if (stats == null || stats.isEmpty()) {
-            return;
-        }
-
-        html.append("<table><thead><tr><th></th>");
-        for (String theme : stats.keySet()) {
-            html.append("<th>").append(theme).append("</th>");
-        }
-        html.append("<th>TOTAL</th></tr></thead><tbody>");
-
-        int gtLocam = 0, gtCodix = 0, maxVal = 0;
-        Map<String, Integer> colTotals = new LinkedHashMap<>();
-        for (String t : stats.keySet()) {
-            int l = stats.get(t).get("LOCAM"), c = stats.get(t).get("Codix");
-            gtLocam += l;
-            gtCodix += c;
-            colTotals.put(t, l + c);
-            maxVal = Math.max(maxVal, Math.max(l, c));
-        }
-
+        if (stats == null || stats.isEmpty()) return;
+        html.append("<table><thead><tr><th style='background:").append(COL_BLUE).append(";'>Source</th>");
+        for (String theme : stats.keySet()) html.append("<th style='background:").append(COL_BLUE).append(";'>").append(theme).append("</th>");
+        html.append("<th style='background:").append(COL_BLUE).append(";'>TOTAL</th></tr></thead><tbody>");
+        int gtLocam = 0, gtCodix = 0;
         html.append("<tr><td class='row-name'>LOCAM</td>");
-        for (String t : stats.keySet()) {
-            html.append(cell(stats.get(t).get("LOCAM"), maxVal));
-        }
-        html.append("<td style='font-weight:bold; background:#eee;'>").append(gtLocam).append("</td></tr>");
-
+        for (String t : stats.keySet()) { int v = stats.get(t).get("LOCAM"); gtLocam += v; html.append("<td>").append(v).append("</td>"); }
+        html.append("<td style='font-weight:700; background:#f8f9fa;'>").append(gtLocam).append("</td></tr>");
         html.append("<tr><td class='row-name'>Codix</td>");
-        for (String t : stats.keySet()) {
-            html.append(cell(stats.get(t).get("Codix"), maxVal));
-        }
-        html.append("<td style='font-weight:bold; background:#eee;'>").append(gtCodix).append("</td></tr>");
-
-        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
-        int totalMax = colTotals.values().stream().max(Integer::compare).orElse(0);
-        for (String t : stats.keySet()) {
-            html.append(cell(colTotals.get(t), totalMax));
-        }
-        html.append("<td class='sep-border'>").append(gtLocam + gtCodix).append("</td></tr>");
-        html.append("</tbody></table><br>");
-    }
-
-    private String cell(int val, int max) {
-        String color = "#ffffff";
-        if (val > 0 && max > 0) {
-            double ratio = Math.min((double) val / (double) max, 1.0);
-            int r = (int) (255 + (204 - 255) * ratio), g = (int) (255 + (50 - 255) * ratio), b = (int) (255 + (90 - 255) * ratio);
-            color = String.format("#%02x%02x%02x", r, g, b);
-        }
-        return "<td style='background-color:" + color + "'>" + val + "</td>";
-    }
-
-    private void appendDetailTable(StringBuilder html, PlanningData data) {
-        // Calcul des totaux pour l'activité passée et le stock
-        Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
-        Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
-
-        for (Integer w : data.weeks) {
-            totalTimeWeek.put(w, 0.0);
-            totalAssignedWeek.put(w, 0);
-        }
-
-        for (ResourcePlanningService.UserStats u : data.userStats.values()) {
-            for (Integer w : data.weeks) {
-                totalTimeWeek.merge(w, u.timePerWeek.getOrDefault(w, 0.0), Double::sum);
-                totalAssignedWeek.merge(w, u.assignedPerWeek.getOrDefault(w, 0), Integer::sum);
-            }
-        }
-
-        html.append("<table><thead>");
-
-        // Ligne d'en-tête 1 : Groupement des catégories
-        html.append("<tr>");
-        html.append("<th rowspan='2' style='background:white; border:none;'></th>");
-        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Past Activity (Days)</th>");
-        html.append("<th colspan='").append(data.nextWeeks.size()).append("' class='sep-border' style='background-color:#f39c12'>Upcoming Absences (Next 4 Weeks)</th>");
-        html.append("<th colspan='").append(data.weeks.size()).append("' class='sep-border'>Current Stock (Assigned)</th>");
-        html.append("</tr>");
-
-        // Ligne d'en-tête 2 : Numéros de semaines
-        html.append("<tr>");
-        for (Integer w : data.weeks) {
-            html.append("<th class='sep-border'>W").append(w).append("</th>");
-        }
-        for (Integer w : data.nextWeeks) {
-            html.append("<th style='background-color:#e67e22'>W").append(w).append("</th>");
-        }
-        for (Integer w : data.weeks) {
-            html.append("<th class='sep-border'>W").append(w).append("</th>");
-        }
-        html.append("</tr></thead><tbody>");
-
-        // Lignes de données par collaborateur
-        for (String login : ResourcePlanningService.TARGET_USERS.keySet()) {
-            ResourcePlanningService.UserStats user = data.userStats.get(login);
-            if (user == null) {
-                continue;
-            }
-
-            html.append("<tr>");
-            html.append("<td class='row-name'>").append(user.fullName).append("</td>");
-
-            // 1. Bloc Activité Passée (Heatmap verte)
-            for (Integer w : data.weeks) {
-                double val = user.timePerWeek.getOrDefault(w, 0.0);
-                html.append("<td style='background-color:").append(getGreenHeatmap(val)).append("'>");
-                html.append(val > 0.05 ? String.format("%.1f", val) : "0,0").append("</td>");
-            }
-
-            // 2. Bloc Absences Futures (Indicateur rouge "ABS")
-            for (Integer w : data.nextWeeks) {
-                boolean isAbsent = data.userAbsences.containsKey(login) && data.userAbsences.get(login).contains(w);
-                String bgColor = isAbsent ? "#e74c3c" : "#ecf0f1"; // Rouge si absent, gris clair sinon
-                String text = isAbsent ? "<b style='color:white'>ABS</b>" : "";
-                html.append("<td style='background-color:").append(bgColor).append("'>").append(text).append("</td>");
-            }
-
-            // 3. Bloc Stock Actuel (Heatmap rouge)
-            for (Integer w : data.weeks) {
-                int val = user.assignedPerWeek.getOrDefault(w, 0);
-                html.append("<td class='sep-border' style='background-color:").append(getRedHeatmap(val)).append("'>");
-                html.append(val).append("</td>");
-            }
-            html.append("</tr>");
-        }
-
-        // Ligne de TOTAL au bas du tableau
-        html.append("<tr class='total-row'><td style='text-align:right; padding-right:15px;'>TOTAL</td>");
-
-        // Totaux Activité
-        for (Integer w : data.weeks) {
-            html.append("<td class='sep-border'>").append(String.format("%.1f", totalTimeWeek.get(w))).append("</td>");
-        }
-        // Cases vides pour les absences futures (Pas de total possible)
-        for (Integer w : data.nextWeeks) {
-            html.append("<td style='background-color:#eee;'></td>");
-        }
-        // Totaux Stock
-        for (Integer w : data.weeks) {
-            html.append("<td class='sep-border'>").append(totalAssignedWeek.get(w)).append("</td>");
-        }
-
-        html.append("</tr></tbody></table>");
-    }
-
-    private String getGreenHeatmap(double val) {
-        if (val <= 0.05) {
-            return "#ffffff";
-        }
-        double ratio = Math.min(val / 5.0, 1.0);
-        return String.format("#%02x%02x%02x", (int) (255 - 209 * ratio), (int) (255 - 51 * ratio), (int) (255 - 142 * ratio));
-    }
-
-    private String getRedHeatmap(int val) {
-        if (val == 0) {
-            return "#ffffff";
-        }
-        double ratio = Math.min((double) val / 20.0, 1.0);
-        return String.format("#%02x%02x%02x", (int) (255 - 51 * ratio), (int) (255 - 205 * ratio), (int) (255 - 165 * ratio));
+        for (String t : stats.keySet()) { int v = stats.get(t).get("Codix"); gtCodix += v; html.append("<td>").append(v).append("</td>"); }
+        html.append("<td style='font-weight:700; background:#f8f9fa;'>").append(gtCodix).append("</td></tr>");
+        html.append("</tbody></table>");
     }
 
     private void appendCopyScript(StringBuilder html) {
-        html.append("<script>");
-        html.append("function copyReportForEmail() {");
-        html.append("  const btn = document.querySelector('.email-btn'); const originalText = btn.innerText;");
-        html.append("  btn.innerText = 'Capture...';");
-        html.append("  html2canvas(document.getElementById('capture-area'), { scale: 2, useCORS: true }).then(canvas => {");
-        html.append("    canvas.toBlob(blob => {");
-        html.append("      const item = new ClipboardItem({ 'image/png': blob });");
-        html.append("      navigator.clipboard.write([item]).then(() => {");
-        html.append("        btn.innerText = 'Copié !'; btn.style.backgroundColor = '#27ae60';");
-        html.append("        setTimeout(() => { btn.innerText = originalText; btn.style.backgroundColor = '").append(COL_OUTLOOK).append("'; }, 2000);");
-        html.append("      });");
-        html.append("    });");
-        html.append("  });");
-        html.append("}");
-        html.append("</script>");
+        html.append("<script>function copyReportForEmail() { const btn = document.querySelector('.email-btn'); html2canvas(document.getElementById('capture-area'), { scale: 2 }).then(canvas => { canvas.toBlob(blob => { const item = new ClipboardItem({ 'image/png': blob }); navigator.clipboard.write([item]).then(() => { btn.innerText = 'Copié !'; btn.style.backgroundColor = '#27ae60'; setTimeout(() => { btn.innerText = '📧 Copier pour Outlook'; btn.style.backgroundColor = '").append(COL_OUTLOOK).append("'; }, 2000); }); }); }); }</script>");
     }
 }
