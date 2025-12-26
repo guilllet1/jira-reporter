@@ -2,511 +2,336 @@ package com.codix.tools;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class HtmlRenderer {
 
     private static final String COL_BLUE = "#1197D6";
-    private static final String COL_RED = "#CC325A";
-    private static final String COL_GREEN = "#2ecc71";
+    private static final String COL_RED_LOCAM = "#E30613"; // Rouge officiel LOCAM
+    private static final String COL_GREEN = "#27ae60";
+    private static final String COL_OUTLOOK = "#0078d4";
 
     public void generate(Map<String, Map<String, Integer>> domainStats, 
-                 Map<String, Map<String, Integer>> functionalStats,
-                 Map<String, Map<String, Integer>> themeStats,
-                 Map<String, Map<String, Double>> avgTimeStats,
-                 Map<String, Double> globalDelays,
-                 JiraService.HistoryData history, 
-                 JiraService.CategoryHistoryData categoryHistory, 
-                 String filename) {
-    StringBuilder html = new StringBuilder();
-    String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
-    String dateFile = new SimpleDateFormat("yyyyMMdd").format(new Date());
-
-    // Calculs KPI
-    int totalLocam = 0;
-    int totalCodix = 0;
-    for (Map<String, Integer> stats : domainStats.values()) {
-        totalLocam += stats.get("LOCAM");
-        totalCodix += stats.get("Codix");
-    }
-    int totalStock = totalLocam + totalCodix;
-    int pctLocam = totalStock > 0 ? (int) Math.round(((double) totalLocam / totalStock) * 100) : 0;
-    int pctCodix = totalStock > 0 ? 100 - pctLocam : 0;
-
-    html.append("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'>");
-    html.append("<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>");
-    html.append("<script src='https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0'></script>");
-    html.append("<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>");
-    html.append("<script src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'></script>");
-    html.append("<link href='https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap' rel='stylesheet'>");
-
-    html.append("<style>");
-    html.append("body { font-family: 'Open Sans', 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }");
-    html.append(".dashboard-container { max-width: 1600px; margin: 0 auto; background-color: #f4f7f6; padding: 10px; }");
-    html.append("#capture-zone { background-color: #f4f7f6; padding: 10px; }");
-    html.append(".header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }");
-    html.append("h1 { color: ").append(COL_BLUE).append("; margin: 0; font-size: 24px; font-weight: 700; }");
-    html.append(".meta { font-size: 14px; color: #888; }");
-    html.append(".ppt-btn { background-color: #E30613; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background 0.3s; }");
-    html.append(".ppt-btn:hover { background-color: #b9050f; }");
-    html.append(".grid-row { display: flex; gap: 20px; margin-bottom: 20px; }");
-    html.append(".card { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); padding: 20px; flex: 1; border-top: 4px solid ").append(COL_BLUE).append("; position: relative; }");
-    html.append(".card-title { font-size: 16px; font-weight: 600; color: #555; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }");
-    html.append(".kpi-widget { display: flex; justify-content: space-around; align-items: center; height: 100%; text-align: center; }");
-    html.append(".kpi-item { flex: 1; text-align: center; }");
-    html.append(".kpi-value { font-size: 32px; font-weight: 800; display: block; }");
-    html.append(".kpi-locam { color: #e74c3c; }");
-    html.append(".kpi-codix { color: ").append(COL_BLUE).append("; }");
-    html.append("table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; margin-bottom: 5px; }");
-    html.append("th { background-color: ").append(COL_BLUE).append("; color: white; padding: 8px; text-align: center; border-bottom: 3px solid #0d7ab0; }");
-    html.append("td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: #444; }");
-    html.append(".row-header { text-align: left; font-weight: 700; color: ").append(COL_BLUE).append("; background-color: #fcfcfc; border-right: 1px solid #eee; width: 140px; }");
-    html.append(".grand-total { background-color: #095c85 !important; color: white !important; font-weight: bold; }");
-    html.append(".table-wrapper { position: relative; margin-top: 10px; }");
-    html.append(".copy-btn { float: right; background-color: #f8f9fa; border: 1px solid #ddd; color: #555; padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; }");
-    html.append(".copy-btn:hover { background-color: #e2e6ea; }");
-    html.append("</style></head><body>");
-
-    html.append("<div id='dashboard' class='dashboard-container'>");
-
-    // --- ZONE DE CAPTURE ---
-    html.append("<div id='capture-zone'>");
-    html.append("<div class='header'>");
-    html.append("<div>");
-    html.append("<h1>EXECUTIVE DASHBOARD - LOCAM / CODIX</h1>");
-    html.append("<div class='meta'>Mise à jour : ").append(dateGeneration).append("</div>");
-    html.append("</div>");
-    html.append("<button class='ppt-btn' onclick='exportToPPT()' data-html2canvas-ignore='true'>📥 Exporter en PPT</button>");
-    html.append("</div>");
-
-    html.append("<div class='grid-row'>");
-    
-    // ENCART REPARTITION STOCK (Centré avec logos et séparateur visible)
-    html.append("<div class='card' style='flex: 0 0 350px; display: flex; flex-direction: column;'>");
-    html.append("<div class='card-title' style='margin-bottom: 0;'>Répartition Stock</div>");
-    html.append("<div class='kpi-widget' style='display: flex; justify-content: center; align-items: center; flex-grow: 1; gap: 15px;'>");
-    
-    // Colonne LOCAM
-    html.append("<div class='kpi-item'>");
-    html.append("<img src='https://www.locam.fr/wp-content/webp-express/webp-images/doc-root/wp-content/uploads/2024/09/GROUPE-LOCAM-VECTORISE-SEUL.png.webp' style='height:35px; margin-bottom:10px;'><br>");
-    html.append("<span class='kpi-value kpi-locam'>").append(pctLocam).append("%</span>");
-    html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>")
-        .append(String.format("%.1f j", globalDelays.getOrDefault("LOCAM", 0.0))).append("</b></div>");
-    html.append("</div>");
-
-    // Séparateur vertical visible
-    html.append("<div style='width: 2px; height: 80px; background-color: #eee; border-radius: 2px;'></div>");
-
-    // Colonne CODIX
-    html.append("<div class='kpi-item'>");
-    html.append("<img src='https://www.codix.eu/img/app/codix-business-and-finance-software-solution-company-logo.png' style='height:25px; margin-bottom:15px;'><br>");
-    html.append("<span class='kpi-value kpi-codix'>").append(pctCodix).append("%</span>");
-    html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>")
-        .append(String.format("%.1f j", globalDelays.getOrDefault("Codix", 0.0))).append("</b></div>");
-    html.append("</div>");
-
-    html.append("</div>");
-    html.append("</div>");
-
-    html.append("<div class='card' style='flex: 1;'>");
-    html.append("<div class='card-title'>Évolution Hebdomadaire (8 semaines)</div>");
-    html.append("<div style='height: 250px;'><canvas id='chartEvolution'></canvas></div>");
-    html.append("</div>");
-    html.append("</div>");
-
-    html.append("<div class='grid-row'>");
-    html.append("<div class='card' style='flex: 1;'>");
-    html.append("<div class='card-title'>Répartition Actuelle (Catégories)</div>");
-    html.append("<div style='height: 300px;'><canvas id='chartCategory'></canvas></div>");
-    html.append("</div>");
-    html.append("<div class='card' style='flex: 2;'>");
-    html.append("<div class='card-title'>Stock par Domaine (Responsabilité)</div>");
-    html.append("<div style='height: 300px;'><canvas id='chartDomain'></canvas></div>");
-    html.append("</div>");
-    html.append("</div>");
-    html.append("</div>"); // FIN CAPTURE ZONE
-
-    // --- DETAILS ZONE ---
-    html.append("<div id='details-zone'>");
-    html.append("<div class='card' style='margin-top: 20px;'>");
-    html.append("<div class='card-title'>Données Détaillées (Non incluses dans l'export PPT)</div>");
-
-    appendDomainTable(html, domainStats);
-    html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
-    
-    appendThemeTable(html, themeStats);
-    html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
-
-    appendFunctionalDomainTableVertical(html, functionalStats);
-    html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
-
-    appendAverageTimeTable(html, avgTimeStats);
-    html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
+                         Map<String, Map<String, Integer>> functionalStats,
+                         Map<String, Map<String, Integer>> themeStats,
+                         Map<String, Map<String, Double>> avgTimeStats,
+                         Map<String, Double> globalDelays,
+                         JiraService.HistoryData history, 
+                         JiraService.CategoryHistoryData categoryHistory, 
+                         String filename) {
         
-    appendHistoryTable(html, history);
-    html.append("<hr style='border: 0; border-top: 1px solid #eee; margin: 30px 0;'>");
-    
-    appendCategoryTable(html, categoryHistory);
+        StringBuilder html = new StringBuilder();
+        String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
+        String dateFile = new SimpleDateFormat("yyyyMMdd").format(new Date());
 
-    html.append("</div>");
-    html.append("</div>");
-    html.append("</div>");
+        // Conversion des logos en Base64 pour garantir l'affichage et la capture image
+        String logoCodixB64 = getBase64Image("https://www.codix.eu/img/app/codix-business-and-finance-software-solution-company-logo.png");
+        String logoLocamB64 = getBase64Image("https://www.locam.fr/wp-content/webp-express/webp-images/doc-root/wp-content/uploads/2024/09/GROUPE-LOCAM-VECTORISE-SEUL.png.webp");
 
-    appendScripts(html, domainStats, history, categoryHistory, dateFile);
-    html.append("</body></html>");
+        // Calculs KPI
+        int totalLocam = 0;
+        int totalCodix = 0;
+        for (Map<String, Integer> stats : domainStats.values()) {
+            totalLocam += stats.get("LOCAM");
+            totalCodix += stats.get("Codix");
+        }
+        int totalStock = totalLocam + totalCodix;
+        int pctLocam = totalStock > 0 ? (int) Math.round(((double) totalLocam / totalStock) * 100) : 0;
+        int pctCodix = totalStock > 0 ? 100 - pctLocam : 0;
 
-    try (FileWriter writer = new FileWriter(filename)) {
-        writer.write(html.toString());
-    } catch (IOException e) {
-        e.printStackTrace();
+        html.append("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'>");
+        html.append("<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>");
+        html.append("<script src='https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0'></script>");
+        html.append("<script src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'></script>");
+        html.append("<script src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'></script>");
+        html.append("<link href='https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap' rel='stylesheet'>");
+
+        html.append("<style>");
+        html.append("body { font-family: 'Open Sans', sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }");
+        html.append(".dashboard-container { max-width: 1600px; margin: 0 auto; }");
+        html.append(".header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }");
+        html.append("h1 { color: ").append(COL_BLUE).append("; border-left: 6px solid ").append(COL_RED_LOCAM).append("; padding-left: 15px; margin: 0; font-size: 24px; font-weight: 700; }");
+        html.append(".meta { text-align:right; color:#888; font-size:12px; margin-bottom: 25px; }");
+        html.append(".btn-group { display: flex; gap: 10px; }");
+        html.append(".action-btn { color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: background 0.3s; font-size: 13px; }");
+        html.append(".ppt-btn { background-color: ").append(COL_RED_LOCAM).append("; }");
+        html.append(".copy-img-btn { background-color: ").append(COL_OUTLOOK).append("; }");
+        
+        html.append(".grid-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }");
+        html.append(".card { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); padding: 20px; flex: 1; border-top: 4px solid ").append(COL_BLUE).append("; position: relative; }");
+        html.append(".card-title { font-size: 13px; font-weight: 700; color: #666; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }");
+        
+        html.append(".kpi-widget { display: flex; justify-content: space-around; align-items: center; height: 100%; text-align: center; }");
+        html.append(".kpi-value { font-size: 32px; font-weight: 800; display: block; }");
+        html.append(".kpi-locam { color: ").append(COL_RED_LOCAM).append("; }");
+        html.append(".kpi-codix { color: ").append(COL_BLUE).append("; }");
+        
+        // --- NOUVEAU STYLE DES TABLEAUX (Liserés Entêtes et Totaux seulement) ---
+        html.append("table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 25px; background: white; }");
+        html.append("th { background-color: ").append(COL_BLUE).append("; color: white; padding: 10px; text-align: center; border-bottom: 2px solid #000; }");
+        html.append("td { padding: 8px; border: none; text-align: center; color: #444; }");
+        html.append(".row-header { text-align: left; font-weight: 700; color: ").append(COL_BLUE).append("; background-color: #fcfcfc; padding-left: 15px; width: 180px; }");
+        
+        // Style pour démarquer la ligne de total par un liseré noir au-dessus
+        html.append(".total-row td, .grand-total-cell { border-top: 2px solid #000 !important; font-weight: 800; background-color: #f8f9fa !important; color: #2c3e50; }");
+        
+        html.append(".table-section-title { font-size: 16px; color: ").append(COL_BLUE).append("; margin: 30px 0 15px 0; border-bottom: 2px solid #eee; padding-bottom: 8px; text-transform: uppercase; font-weight: 700; }");
+        html.append(".copy-btn { float: right; background-color: #f8f9fa; border: 1px solid #ddd; color: #555; padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; margin-bottom: 5px; }");
+        html.append("</style></head><body>");
+
+        html.append("<div id='dashboard' class='dashboard-container'>");
+
+        html.append("<div class='header-row'>");
+        html.append("<h1>EXECUTIVE DASHBOARD - LOCAM / CODIX</h1>");
+        html.append("<div class='btn-group'>");
+        html.append("<button class='action-btn copy-img-btn' onclick='copyDashboardAsImage()'>📋 Copier l'image</button>");
+        html.append("<button class='action-btn ppt-btn' onclick='exportToPPT()'>📥 Exporter en PPT</button>");
+        html.append("</div>");
+        html.append("</div>");
+        html.append("<div class='meta'>Mise à jour : ").append(dateGeneration).append("</div>");
+
+        // Zone de capture image
+        html.append("<div id='capture-area' style='background-color: #f4f7f6; padding: 15px; border-radius: 8px;'>");
+        html.append("<div class='grid-row'>");
+        
+        // Encart Répartition Stock
+        html.append("<div class='card' style='flex: 0 0 380px; display: flex; flex-direction: column;'>");
+        html.append("<div class='card-title'>Répartition Stock</div>");
+        html.append("<div class='kpi-widget' style='gap: 20px;'>");
+        html.append("<div style='flex: 1;'>");
+        html.append("<img src='").append(logoLocamB64).append("' style='height:35px; margin-bottom:10px;'><br>");
+        html.append("<span class='kpi-value kpi-locam'>").append(pctLocam).append("%</span>");
+        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("LOCAM", 0.0))).append("</b></div>");
+        html.append("</div>");
+        html.append("<div style='width: 1px; height: 80px; background-color: #eee;'></div>");
+        html.append("<div style='flex: 1;'>");
+        html.append("<img src='").append(logoCodixB64).append("' style='height:25px; margin-bottom:15px;'><br>");
+        html.append("<span class='kpi-value kpi-codix'>").append(pctCodix).append("%</span>");
+        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("Codix", 0.0))).append("</b></div>");
+        html.append("</div>");
+        html.append("</div>");
+        html.append("</div>");
+
+        html.append("<div class='card'>");
+        html.append("<div class='card-title'>Évolution Hebdomadaire (8 semaines)</div>");
+        html.append("<div style='height: 250px;'><canvas id='chartEvolution'></canvas></div>");
+        html.append("</div>");
+        html.append("</div>");
+
+        html.append("<div class='grid-row'>");
+        html.append("<div class='card' style='flex: 1;'>");
+        html.append("<div class='card-title'>Répartition Actuelle (Catégories)</div>");
+        html.append("<div style='height: 300px;'><canvas id='chartCategory'></canvas></div>");
+        html.append("</div>");
+        html.append("<div class='card' style='flex: 2;'>");
+        html.append("<div class='card-title'>Stock par Domaine (Responsabilité)</div>");
+        html.append("<div style='height: 300px;'><canvas id='chartDomain'></canvas></div>");
+        html.append("</div>");
+        html.append("</div>");
+        html.append("</div>");
+
+        // Section Details
+        html.append("<div id='details-zone' style='background: white; padding: 25px; border-radius: 8px; margin-top: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);'>");
+        html.append("<div class='table-section-title' style='margin-top:0;'>Données Détaillées d'Exploitation</div>");
+
+        appendDomainTable(html, domainStats);
+        appendThemeTable(html, themeStats);
+        appendFunctionalDomainTableVertical(html, functionalStats);
+        appendAverageTimeTable(html, avgTimeStats);
+        appendHistoryTable(html, history);
+        appendCategoryTable(html, categoryHistory);
+        html.append("</div></div>");
+
+        appendScripts(html, domainStats, history, categoryHistory, dateFile);
+        html.append("</body></html>");
+
+        try (FileWriter writer = new FileWriter(filename)) {
+            writer.write(html.toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
-}
 
-    private void appendScripts(StringBuilder html,
-            Map<String, Map<String, Integer>> domainStats,
-            JiraService.HistoryData history,
-            JiraService.CategoryHistoryData catHistory,
-            String dateFile) {
-        html.append("<script>");
-        html.append("Chart.register(ChartDataLabels);");
-        String labelsWeek = toJsonArrayString(history.labels);
-        String dataStock = getDataSeries(history, JiraService.MetricType.STOCK);
-        String dataCreated = getDataSeries(history, JiraService.MetricType.CREATED);
-        String dataClosed = getDataSeries(history, JiraService.MetricType.CLOSED);
-        String dataDelivered = getDataSeries(history, JiraService.MetricType.DELIVERED);
-        List<String> domains = new ArrayList<>();
-        List<Integer> dataLocam = new ArrayList<>();
-        List<Integer> dataCodix = new ArrayList<>();
-
-        for (String d : domainStats.keySet()) {
-            int valLocam = domainStats.get(d).get("LOCAM");
-            int valCodix = domainStats.get(d).get("Codix");
-
-            // On n'ajoute la catégorie au graphique que si ce n'est pas "AUTRES" 
-            // OU si "AUTRES" contient au moins un ticket
-            if ("AUTRES".equals(d) && (valLocam + valCodix) == 0) {
-                continue;
+    private String getBase64Image(String imageUrl) {
+        try {
+            URL url = new URL(imageUrl);
+            try (InputStream is = url.openStream()) {
+                byte[] bytes = is.readAllBytes();
+                String mimeType = imageUrl.contains(".svg") ? "image/svg+xml" : "image/png";
+                return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
             }
-
-            domains.add(d);
-            dataLocam.add(valLocam);
-            dataCodix.add(valCodix);
-        }
-        String labelsDomain = toJsonArrayString(domains);
-        Integer lastWeek = history.order.get(history.order.size() - 1);
-        List<String> catLabels = new ArrayList<>();
-        List<Integer> catValues = new ArrayList<>();
-        if (catHistory.stats.containsKey(lastWeek)) {
-            for (Map.Entry<String, Integer> entry : catHistory.stats.get(lastWeek).entrySet()) {
-                if (entry.getValue() > 0) {
-                    catLabels.add(entry.getKey());
-                    catValues.add(entry.getValue());
-                }
-            }
-        }
-        html.append("new Chart(document.getElementById('chartEvolution'), { type: 'bar', data: { labels: ").append(labelsWeek).append(", datasets: [ { type: 'line', label: 'Créés', data: ").append(dataCreated).append(", borderColor: '").append(COL_RED).append("', borderWidth: 2, tension: 0.3, datalabels: {display: false} }, { type: 'line', label: 'Clos', data: ").append(dataClosed).append(", borderColor: '").append(COL_GREEN).append("', borderWidth: 2, tension: 0.3, datalabels: {display: false} }, { type: 'line', label: 'Livrés', data: ").append(dataDelivered).append(", borderColor: '#f1c40f', borderWidth: 2, tension: 0.3, borderDash: [5, 5], datalabels: {display: false} }, { type: 'bar', label: 'Stock', data: ").append(dataStock).append(", backgroundColor: 'rgba(17, 151, 214, 0.2)', borderColor: '").append(COL_BLUE).append("', borderWidth: 1, datalabels: {display: false} } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, datalabels: { display: false } } } });");
-        html.append("new Chart(document.getElementById('chartCategory'), { type: 'doughnut', data: { labels: ").append(toJsonArrayString(catLabels)).append(", datasets: [{ data: ").append(dataValues(catValues)).append(", backgroundColor: ['#1197D6', '#CC325A', '#2ecc71', '#f1c40f', '#9b59b6', '#34495e', '#e67e22', '#95a5a6'], borderWidth: 1, borderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: 20 }, plugins: { legend: { display: true, position: 'right', labels: { boxWidth: 10, font: {size: 11} } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value, display: 'auto' } } } });");
-        html.append("new Chart(document.getElementById('chartDomain'), { type: 'bar', data: { labels: ").append(labelsDomain).append(", datasets: [ { label: 'LOCAM', data: ").append(dataValues(dataLocam)).append(", backgroundColor: '#e74c3c' }, { label: 'CODIX', data: ").append(dataValues(dataCodix)).append(", backgroundColor: '").append(COL_BLUE).append("' } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { legend: { position: 'bottom' }, datalabels: { display: false } } } });");
-        html.append("function copyTable(tableId, btnId) { var range = document.createRange(); range.selectNode(document.getElementById(tableId)); window.getSelection().removeAllRanges(); window.getSelection().addRange(range); document.execCommand('copy'); window.getSelection().removeAllRanges(); var btn = document.getElementById(btnId); var originalText = btn.innerText; btn.innerText = 'Copié !'; setTimeout(function() { btn.innerText = originalText; }, 2000); }");
-        html.append("function exportToPPT() { var btn = document.querySelector('.ppt-btn'); btn.innerText = 'Génération en cours...'; btn.disabled = true; html2canvas(document.getElementById('capture-zone'), { scale: 2, useCORS: true }).then(canvas => { var imgData = canvas.toDataURL('image/png'); let pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_16x9'; let slide = pptx.addSlide(); slide.addImage({ data: imgData, x: 0, y: 0, w: '100%', h: '100%', sizing: { type: 'contain', w: '100%', h: '100%' } }); pptx.writeFile({ fileName: 'Dashboard_Codix_").append(dateFile).append(".pptx' }); btn.innerText = '📥 Exporter en PPT'; btn.disabled = false; }); }");
-        html.append("</script>");
+        } catch (Exception e) { return imageUrl; }
     }
 
-    // --- Helpers (Inchangés) ---
-    private String toJsonArrayString(List<String> list) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < list.size(); i++) {
-            sb.append("'").append(list.get(i)).append("'");
-            if (i < list.size() - 1) {
-                sb.append(",");
-            }
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-
-    private String dataValues(List<Integer> list) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < list.size(); i++) {
-            sb.append(list.get(i));
-            if (i < list.size() - 1) {
-                sb.append(",");
-            }
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-
-    private String getDataSeries(JiraService.HistoryData history, JiraService.MetricType metric) {
-        List<Integer> values = new ArrayList<>();
-        for (Integer week : history.order) {
-            values.add(history.stats.get(week).get(metric));
-        }
-        return dataValues(values);
+    private String cell(int val, int max) {
+        if (val == 0 || max == 0) return "<td>0</td>";
+        double ratio = (double) val / max;
+        int r = (int) (255 - (255 - 17) * ratio), g = (int) (255 - (255 - 151) * ratio), b = (int) (255 - (255 - 214) * ratio);
+        return "<td style='background-color:rgb("+r+","+g+","+b+"); font-weight:"+(ratio > 0.5 ? "700" : "400")+"'>" + val + "</td>";
     }
 
     private void appendDomainTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
-        // Filtrage des clés : on retire "AUTRES" si son total est à 0
         List<String> visibleKeys = new ArrayList<>();
-        for (String d : stats.keySet()) {
-            int total = stats.get(d).get("LOCAM") + stats.get(d).get("Codix");
-            if ("AUTRES".equals(d) && total == 0) {
-                continue;
-            }
-            visibleKeys.add(d);
-        }
-
-        html.append("<div class='table-wrapper'><h3>Répartition par Domaine</h3>");
-        html.append("<table id='tab-domain'><thead><tr><th></th>");
-        for (String d : visibleKeys) {
-            html.append("<th>").append(d).append("</th>");
-        }
+        for (String d : stats.keySet()) { if (!"AUTRES".equals(d) || (stats.get(d).get("LOCAM") + stats.get(d).get("Codix")) > 0) visibleKeys.add(d); }
+        html.append("<div class='table-section-title'>Répartition par Domaine principal</div><button id='btn-domain' class='copy-btn' onclick=\"copyTable('tab-domain', 'btn-domain')\">Copier</button>");
+        html.append("<table id='tab-domain'><thead><tr><th>Acteur</th>");
+        for (String d : visibleKeys) html.append("<th>").append(d).append("</th>");
         html.append("<th>TOTAL</th></tr></thead><tbody>");
-
         int gtLocam = 0, gtCodix = 0, maxVal = 0;
-        Map<String, Integer> colTotals = new HashMap<>();
-        for (String d : visibleKeys) { // Utilisation de visibleKeys
-            int l = stats.get(d).get("LOCAM"), c = stats.get(d).get("Codix");
-            gtLocam += l;
-            gtCodix += c;
-            colTotals.merge(d, l + c, Integer::sum);
-            maxVal = Math.max(maxVal, Math.max(l, c));
-        }
-
+        for (String d : visibleKeys) { int l = stats.get(d).get("LOCAM"); int c = stats.get(d).get("Codix"); gtLocam += l; gtCodix += c; maxVal = Math.max(maxVal, Math.max(l, c)); }
         html.append("<tr><td class='row-header'>LOCAM</td>");
-        for (String d : visibleKeys) {
-            html.append(cell(stats.get(d).get("LOCAM"), maxVal));
-        }
-        html.append("<td class='grand-total'>").append(gtLocam).append("</td></tr>");
-
-        html.append("<tr><td class='row-header'>Codix</td>");
-        for (String d : visibleKeys) {
-            html.append(cell(stats.get(d).get("Codix"), maxVal));
-        }
-        html.append("<td class='grand-total'>").append(gtCodix).append("</td></tr>");
-
+        for (String d : visibleKeys) html.append(cell(stats.get(d).get("LOCAM"), maxVal));
+        html.append("<td>").append(gtLocam).append("</td></tr>");
+        html.append("<tr><td class='row-header'>CODIX</td>");
+        for (String d : visibleKeys) html.append(cell(stats.get(d).get("Codix"), maxVal));
+        html.append("<td>").append(gtCodix).append("</td></tr>");
         html.append("<tr class='total-row'><td class='row-header'>TOTAL</td>");
-        int finalTotal = 0;
-        int maxCol = colTotals.isEmpty() ? 0 : Collections.max(colTotals.values());
-        for (String d : visibleKeys) {
-            int val = colTotals.get(d);
-            finalTotal += val;
-            html.append(cell(val, maxCol));
-        }
-        html.append("<td class='grand-total'>").append(finalTotal).append("</td></tr>");
-        html.append("</tbody></table>");
-        html.append("<button id='btn-domain' class='copy-btn' onclick=\"copyTable('tab-domain', 'btn-domain')\">Copier</button></div>");
+        for (String d : visibleKeys) html.append("<td>").append(stats.get(d).get("LOCAM") + stats.get(d).get("Codix")).append("</td>");
+        html.append("<td>").append(gtLocam + gtCodix).append("</td></tr></tbody></table>");
     }
 
-    // --- NOUVELLE METHODE VERTICALE POUR DOMAINE FONCTIONNEL ---
-    // Cette méthode transpose le tableau : Lignes = Domaines, Colonnes = Acteurs
-    private void appendFunctionalDomainTableVertical(StringBuilder html, Map<String, Map<String, Integer>> stats) {
-        String tableId = "tab-func";
-        String btnId = "btn-func";
-
-        html.append("<div class='table-wrapper'><h3>Répartition par Domaine Fonctionnel</h3>");
-        html.append("<table id='").append(tableId).append("'><thead><tr>");
-        html.append("<th style='width: 40%; text-align:left; padding-left:15px;'>Domaine Fonctionnel</th>");
-        html.append("<th>LOCAM</th><th>CODIX</th><th>TOTAL</th>");
-        html.append("</tr></thead><tbody>");
-
-        // Calcul du MAX global pour la Heatmap et des totaux
+    private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
+        List<String> visibleKeys = new ArrayList<>();
+        for (String t : stats.keySet()) { if (!"AUTRES".equals(t) || (stats.get(t).get("LOCAM") + stats.get(t).get("Codix")) > 0) visibleKeys.add(t); }
+        html.append("<div class='table-section-title'>Répartition par Thème technique</div><button id='btn-theme' class='copy-btn' onclick=\"copyTable('tab-theme', 'btn-theme')\">Copier</button>");
+        html.append("<table id='tab-theme'><thead><tr><th>Acteur</th>");
+        for (String t : visibleKeys) html.append("<th>").append(t).append("</th>");
+        html.append("<th>TOTAL</th></tr></thead><tbody>");
         int maxVal = 0;
-        int sumLocamTotal = 0;
-        int sumCodixTotal = 0;
+        for (String t : visibleKeys) maxVal = Math.max(maxVal, Math.max(stats.get(t).get("LOCAM"), stats.get(t).get("Codix")));
+        html.append("<tr><td class='row-header'>LOCAM</td>");
+        for (String t : visibleKeys) html.append(cell(stats.get(t).get("LOCAM"), maxVal));
+        html.append("<td>-</td></tr><tr><td class='row-header'>CODIX</td>");
+        for (String t : visibleKeys) html.append(cell(stats.get(t).get("Codix"), maxVal));
+        html.append("<td>-</td></tr></tbody></table>");
+    }
 
+    private void appendFunctionalDomainTableVertical(StringBuilder html, Map<String, Map<String, Integer>> stats) {
+        html.append("<div class='table-section-title'>Analyse par Domaine Fonctionnel</div><button id='btn-func' class='copy-btn' onclick=\"copyTable('tab-func', 'btn-func')\">Copier</button>");
+        html.append("<table id='tab-func'><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine Fonctionnel</th><th>LOCAM</th><th>CODIX</th><th>TOTAL</th></tr></thead><tbody>");
+        int maxVal = 0;
+        for (Map<String, Integer> s : stats.values()) maxVal = Math.max(maxVal, Math.max(s.get("LOCAM"), s.get("Codix")));
         for (String d : stats.keySet()) {
-            int l = stats.get(d).get("LOCAM");
-            int c = stats.get(d).get("Codix");
-
-            // On ne compte dans les totaux globaux que ce qui sera affiché
-            if ("AUTRES".equals(d) && (l + c) == 0) {
-                continue;
-            }
-
-            sumLocamTotal += l;
-            sumCodixTotal += c;
-            maxVal = Math.max(maxVal, Math.max(l, c));
+            int l = stats.get(d).get("LOCAM"), c = stats.get(d).get("Codix");
+            if ("AUTRES".equals(d) && (l + c) == 0) continue;
+            html.append("<tr><td class='row-header'>").append(d).append("</td>").append(cell(l, maxVal)).append(cell(c, maxVal)).append("<td style='background:#f8f9fa; font-weight:700;'>").append(l + c).append("</td></tr>");
         }
-
-        // Itération sur les lignes (Domaines)
-        for (String d : stats.keySet()) {
-            int l = stats.get(d).get("LOCAM");
-            int c = stats.get(d).get("Codix");
-            int total = l + c;
-
-            // Masquage de la catégorie "AUTRES" si vide
-            if ("AUTRES".equals(d) && total == 0) {
-                continue;
-            }
-
-            html.append("<tr>");
-            html.append("<td class='row-header' style='width: 40%; text-align:left; padding-left:15px;'>").append(d).append("</td>");
-
-            // Valeurs avec Heatmap
-            html.append(cell(l, maxVal));
-            html.append(cell(c, maxVal));
-
-            // Total ligne
-            html.append("<td style='background-color:#eef2f5; font-weight:bold;'>").append(total).append("</td>");
-            html.append("</tr>");
-        }
-
-        // Ligne de Totaux Globaux
-        html.append("<tr class='total-row'>");
-        html.append("<td class='row-header' style='text-align:right; padding-right:15px;'>TOTAL</td>");
-        html.append("<td class='grand-total'>").append(sumLocamTotal).append("</td>");
-        html.append("<td class='grand-total'>").append(sumCodixTotal).append("</td>");
-        html.append("<td class='grand-total'>").append(sumLocamTotal + sumCodixTotal).append("</td>");
-        html.append("</tr>");
-
         html.append("</tbody></table>");
-        html.append("<button id='").append(btnId).append("' class='copy-btn' onclick=\"copyTable('").append(tableId).append("', '").append(btnId).append("')\">Copier</button></div>");
+    }
+
+    private void appendAverageTimeTable(StringBuilder html, Map<String, Map<String, Double>> stats) {
+        html.append("<div class='table-section-title'>Temps d'assignation moyen (jours)</div><table><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine</th><th>LOCAM</th><th>CODIX</th></tr></thead><tbody>");
+        for (String domain : stats.keySet()) {
+            double l = stats.get(domain).get("LOCAM"), c = stats.get(domain).get("Codix");
+            if ("AUTRES".equals(domain) && (l + c == 0)) continue;
+            html.append("<tr><td class='row-header'>").append(domain).append("</td><td>").append(String.format("%.1f j", l)).append("</td><td>").append(String.format("%.1f j", c)).append("</td></tr>");
+        }
+        html.append("</tbody></table>");
     }
 
     private void appendHistoryTable(StringBuilder html, JiraService.HistoryData history) {
-        html.append("<div class='table-wrapper'><h3>Historique Hebdo</h3>");
+        html.append("<div class='table-section-title'>Historique Hebdomadaire</div><button id='btn-history' class='copy-btn' onclick=\"copyTable('tab-history', 'btn-history')\">Copier</button>");
         html.append("<table id='tab-history'><thead><tr><th>Indicateur</th>");
-        for (String label : history.labels) {
-            html.append("<th>").append(label).append("</th>");
-        }
+        for (String label : history.labels) html.append("<th>").append(label).append("</th>");
         html.append("</tr></thead><tbody>");
         for (JiraService.MetricType metric : JiraService.MetricType.values()) {
             html.append("<tr><td class='row-header'>").append(metric.label).append("</td>");
             Integer prev = null;
             for (Integer week : history.order) {
-                Map<JiraService.MetricType, Integer> weekData = history.stats.get(week);
-                // On vérifie si la semaine existe ET si la métrique existe, sinon on met 0
-                int curr = (weekData != null) ? weekData.getOrDefault(metric, 0) : 0;
-
+                int curr = history.stats.getOrDefault(week, new HashMap<>()).getOrDefault(metric, 0);
                 html.append("<td>").append(curr).append(getTrendArrow(curr, prev, metric.higherIsBetter)).append("</td>");
                 prev = curr;
             }
             html.append("</tr>");
         }
         html.append("</tbody></table>");
-        html.append("<button id='btn-history' class='copy-btn' onclick=\"copyTable('tab-history', 'btn-history')\">Copier</button></div>");
     }
 
     private void appendCategoryTable(StringBuilder html, JiraService.CategoryHistoryData data) {
-        html.append("<div class='table-wrapper'><h3>Historique Catégories</h3>");
+        html.append("<div class='table-section-title'>Historique par Catégorie</div><button id='btn-cat' class='copy-btn' onclick=\"copyTable('tab-cat', 'btn-cat')\">Copier</button>");
         html.append("<table id='tab-cat'><thead><tr><th>Catégorie</th>");
-        for (String label : data.labels) {
-            html.append("<th>").append(label).append("</th>");
-        }
+        for (String label : data.labels) html.append("<th>").append(label).append("</th>");
         html.append("</tr></thead><tbody>");
         for (String category : JiraService.CODIX_CATEGORIES) {
             html.append("<tr><td class='row-header'>").append(category).append("</td>");
             Integer prev = null;
             for (Integer week : data.order) {
-                Map<String, Integer> weekData = data.stats.get(week);
-                int curr = weekData != null ? weekData.getOrDefault(category, 0) : 0;
+                int curr = data.stats.getOrDefault(week, new HashMap<>()).getOrDefault(category, 0);
                 html.append("<td>").append(curr).append(getTrendArrow(curr, prev, false)).append("</td>");
                 prev = curr;
             }
             html.append("</tr>");
         }
         html.append("</tbody></table>");
-        html.append("<button id='btn-cat' class='copy-btn' onclick=\"copyTable('tab-cat', 'btn-cat')\">Copier</button></div>");
     }
 
     private String getTrendArrow(int curr, Integer prev, boolean higherIsBetter) {
-        if (prev == null) {
-            return "";
-        }
-        if (curr > prev) {
-            return "<span class='" + (higherIsBetter ? "trend-up-good" : "trend-up-bad") + "'>&#9650;</span>";
-        }
-        if (curr < prev) {
-            return "<span class='" + (higherIsBetter ? "trend-down-bad" : "trend-down-good") + "'>&#9660;</span>";
-        }
-        return "<span class='trend-neutral'>&#8212;</span>";
+        if (prev == null || curr == prev) return "";
+        boolean isGood = higherIsBetter ? (curr > prev) : (curr < prev);
+        String arrow = curr > prev ? "&#9650;" : "&#9660;";
+        String css = isGood ? (curr > prev ? "trend-up-good" : "trend-down-good") : (curr > prev ? "trend-up-bad" : "trend-down-bad");
+        return " <span class='" + css + "'>" + arrow + "</span>";
     }
 
-    private String cell(int val, int max) {
-        return "<td style='background-color:" + getCodixHeatmapColor(val, max) + "'>" + val + "</td>";
+    private void appendScripts(StringBuilder html, Map<String, Map<String, Integer>> domainStats, JiraService.HistoryData history, JiraService.CategoryHistoryData catHistory, String dateFile) {
+        html.append("<script>");
+        html.append("Chart.register(ChartDataLabels);");
+        
+        String labelsWeek = toJsonArrayString(history.labels);
+        String dataStock = getDataSeries(history, JiraService.MetricType.STOCK);
+        String dataCreated = getDataSeries(history, JiraService.MetricType.CREATED);
+        String dataClosed = getDataSeries(history, JiraService.MetricType.CLOSED);
+        String dataDelivered = getDataSeries(history, JiraService.MetricType.DELIVERED);
+
+        List<String> domains = new ArrayList<>();
+        List<Integer> dLocam = new ArrayList<>();
+        List<Integer> dCodix = new ArrayList<>();
+        domainStats.forEach((k, v) -> { if (!"AUTRES".equals(k) || (v.get("LOCAM") + v.get("Codix")) > 0) { domains.add(k); dLocam.add(v.get("LOCAM")); dCodix.add(v.get("Codix")); } });
+
+        List<String> catLabels = new ArrayList<>();
+        List<Integer> catValues = new ArrayList<>();
+        if (!catHistory.order.isEmpty()) {
+            int lastWeek = catHistory.order.get(catHistory.order.size() - 1);
+            catHistory.stats.getOrDefault(lastWeek, new HashMap<>()).forEach((k, v) -> { if (v > 0) { catLabels.add(k); catValues.add(v); } });
+        }
+
+        // Graphiques et capture corrigés
+        html.append("new Chart(document.getElementById('chartEvolution'), { type: 'bar', data: { labels: ").append(labelsWeek).append(", datasets: [")
+            .append("{ type: 'line', label: 'Créés', data: ").append(dataCreated).append(", borderColor: '").append(COL_RED_LOCAM).append("', borderWidth: 2, tension: 0.3, datalabels: {display: false} },")
+            .append("{ type: 'line', label: 'Clos', data: ").append(dataClosed).append(", borderColor: '").append(COL_GREEN).append("', borderWidth: 2, tension: 0.3, datalabels: {display: false} },")
+            .append("{ type: 'line', label: 'Livrés', data: ").append(dataDelivered).append(", borderColor: '#f1c40f', borderWidth: 2, tension: 0.3, borderDash: [5, 5], datalabels: {display: false} },")
+            .append("{ type: 'bar', label: 'Stock', data: ").append(dataStock).append(", backgroundColor: 'rgba(17, 151, 214, 0.15)', borderColor: '").append(COL_BLUE).append("', borderWidth: 1, datalabels: {display: false} }")
+            .append("] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });");
+
+        html.append("new Chart(document.getElementById('chartCategory'), { type: 'doughnut', data: { labels: ").append(toJsonArrayString(catLabels)).append(", datasets: [{ data: ").append(dataValues(catValues)).append(", backgroundColor: ['#1197D6', '#CC325A', '#2ecc71', '#f1c40f', '#9b59b6', '#34495e', '#e67e22', '#95a5a6'], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10 } }, datalabels: { color: '#fff', font: { weight: 'bold' }, formatter: Math.round, display: 'auto' } } } });");
+
+        html.append("new Chart(document.getElementById('chartDomain'), { type: 'bar', data: { labels: ").append(toJsonArrayString(domains)).append(", datasets: [{ label: 'LOCAM', data: ").append(dataValues(dLocam)).append(", backgroundColor: '").append(COL_RED_LOCAM).append("' }, { label: 'CODIX', data: ").append(dataValues(dCodix)).append(", backgroundColor: '").append(COL_BLUE).append("' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { legend: { position: 'bottom' }, datalabels: { display: false } } } });");
+
+        html.append("function copyTable(tableId, btnId) { var range = document.createRange(); range.selectNode(document.getElementById(tableId)); window.getSelection().removeAllRanges(); window.getSelection().addRange(range); document.execCommand('copy'); var btn = document.getElementById(btnId); btn.innerText = 'Copié !'; setTimeout(()=> btn.innerText = 'Copier', 2000); }");
+        
+        html.append("function copyDashboardAsImage() { const btn = document.querySelector('.copy-img-btn'); const originalText = btn.innerText; btn.innerText = 'Capture...'; html2canvas(document.getElementById('capture-area'), { scale: 2, useCORS: true, allowTaint: true }).then(canvas => { canvas.toBlob(blob => { const item = new ClipboardItem({ 'image/png': blob }); navigator.clipboard.write([item]).then(() => { btn.innerText = 'Copié !'; btn.style.backgroundColor = '#27ae60'; setTimeout(() => { btn.innerText = originalText; btn.style.backgroundColor = '").append(COL_OUTLOOK).append("'; }, 2000); }); }); }); }");
+
+        html.append("function exportToPPT() { var btn = document.querySelector('.ppt-btn'); btn.innerText = 'Génération...'; html2canvas(document.getElementById('capture-area'), { scale: 2, useCORS: true }).then(canvas => { var img = canvas.toDataURL('image/png'); let pptx = new PptxGenJS(); let slide = pptx.addSlide(); slide.addImage({ data: img, x: 0, y: 0, w: '100%', h: '100%', sizing: { type: 'contain' } }); pptx.writeFile({ fileName: 'Dashboard_LOCAM_").append(dateFile).append(".pptx' }); btn.innerText = '📥 Exporter en PPT'; }); }");
+        
+        html.append("</script>");
     }
 
-    private String getCodixHeatmapColor(int val, int max) {
-        if (val == 0 || max == 0) {
-            return "#ffffff";
-        }
-        double ratio = (double) val / max;
-        int r = (int) (255 + (204 - 255) * ratio);
-        int g = (int) (255 + (50 - 255) * ratio);
-        int b = (int) (255 + (90 - 255) * ratio);
-        return String.format("#%02x%02x%02x", r, g, b);
+    private String toJsonArrayString(List<String> list) {
+        if (list.isEmpty()) return "[]";
+        return "[" + list.stream().map(s -> "'" + s.replace("'", "\\'") + "'").reduce((a, b) -> a + "," + b).orElse("") + "]";
     }
 
-    private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
-        // Filtrage des thèmes : on ignore "AUTRES" si son total est nul
-        List<String> visibleKeys = new ArrayList<>();
-        for (String t : stats.keySet()) {
-            int total = stats.get(t).get("LOCAM") + stats.get(t).get("Codix");
-            if ("AUTRES".equals(t) && total == 0) {
-                continue;
-            }
-            visibleKeys.add(t);
-        }
-
-        html.append("<div class='table-wrapper'><h3>Répartition par Thème</h3>");
-        html.append("<table id='tab-theme'><thead><tr><th></th>");
-        for (String t : visibleKeys) {
-            html.append("<th>").append(t).append("</th>");
-        }
-        html.append("<th>TOTAL</th></tr></thead><tbody>");
-
-        int gtLocam = 0, gtCodix = 0, maxVal = 0;
-        Map<String, Integer> colTotals = new HashMap<>();
-        for (String t : visibleKeys) {
-            int l = stats.get(t).get("LOCAM");
-            int c = stats.get(t).get("Codix");
-            gtLocam += l;
-            gtCodix += c;
-            colTotals.merge(t, l + c, Integer::sum);
-            maxVal = Math.max(maxVal, Math.max(l, c));
-        }
-
-        // Ligne LOCAM
-        html.append("<tr><td class='row-header'>LOCAM</td>");
-        for (String t : visibleKeys) {
-            html.append(cell(stats.get(t).get("LOCAM"), maxVal));
-        }
-        html.append("<td class='grand-total'>").append(gtLocam).append("</td></tr>");
-
-        // Ligne Codix
-        html.append("<tr><td class='row-header'>Codix</td>");
-        for (String t : visibleKeys) {
-            html.append(cell(stats.get(t).get("Codix"), maxVal));
-        }
-        html.append("<td class='grand-total'>").append(gtCodix).append("</td></tr>");
-
-        // Ligne TOTAL
-        html.append("<tr class='total-row'><td class='row-header'>TOTAL</td>");
-        int finalTotal = 0;
-        int maxCol = colTotals.isEmpty() ? 0 : Collections.max(colTotals.values());
-        for (String t : visibleKeys) {
-            int val = colTotals.get(t);
-            finalTotal += val;
-            html.append(cell(val, maxCol));
-        }
-        html.append("<td class='grand-total'>").append(finalTotal).append("</td></tr>");
-        html.append("</tbody></table>");
-        html.append("<button id='btn-theme' class='copy-btn' onclick=\"copyTable('tab-theme', 'btn-theme')\">Copier</button></div>");
+    private String dataValues(List<? extends Number> list) {
+        if (list.isEmpty()) return "[]";
+        return "[" + list.stream().map(Object::toString).reduce((a, b) -> a + "," + b).orElse("") + "]";
     }
 
-    private void appendAverageTimeTable(StringBuilder html, Map<String, Map<String, Double>> stats) {
-        html.append("<div class='table-wrapper'><h3>Temps moyen d'assignation par Domaine (en jours calendaires)</h3>");
-        html.append("<table><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine</th><th>LOCAM</th><th>CODIX</th></tr></thead><tbody>");
-        for (String domain : stats.keySet()) {
-            if ("AUTRES".equals(domain) && (stats.get(domain).get("LOCAM") + stats.get(domain).get("Codix") == 0)) {
-                continue;
-            }
-            html.append("<tr><td class='row-header' style='text-align:left; padding-left:15px;'>").append(domain).append("</td>");
-            html.append("<td>").append(String.format("%.1f j", stats.get(domain).get("LOCAM"))).append("</td>");
-            html.append("<td>").append(String.format("%.1f j", stats.get(domain).get("Codix"))).append("</td></tr>");
-        }
-        html.append("</tbody></table></div>");
+    private String getDataSeries(JiraService.HistoryData history, JiraService.MetricType metric) {
+        List<Integer> values = new ArrayList<>();
+        for (Integer week : history.order) values.add(history.stats.getOrDefault(week, new HashMap<>()).getOrDefault(metric, 0));
+        return dataValues(values);
     }
 }
