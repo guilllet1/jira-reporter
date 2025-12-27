@@ -32,7 +32,7 @@ public class JiraReportApp {
             Map<String, Map<String, Integer>> themeStats = jiraService.getCurrentThemeStats(jql);
 
             // Calcul des temps moyens d'assignation
-            Map<String, Map<String, Double>> avgTimeStats = jiraService.getAverageAssignmentTimeByDomain(jql);
+            Map<String, Map<String, Double>> avgTimeStats = jiraService.getMedianAssignmentTimeByDomain(jql);
 
             JiraService.HistoryData historyStats = jiraService.getHistoryMetrics(jql);
             JiraService.CategoryHistoryData categoryStats = jiraService.getCodixCategoryHistory(jql);

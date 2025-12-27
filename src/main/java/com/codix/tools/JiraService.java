@@ -404,61 +404,70 @@ public class JiraService {
         return getStatsByMapping(baseJql, themeMapping);
     }
 
-    public Map<String, Map<String, Double>> getAverageAssignmentTimeByDomain(String baseJql) throws IOException {
-        System.out.println("Analyse des temps moyens d'assignation par domaine...");
-        JSONObject result = searchJira(baseJql, 1000, null);
-        Map<String, Map<String, Double>> totalTime = new TreeMap<>();
-        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+    public Map<String, Map<String, Double>> getMedianAssignmentTimeByDomain(String baseJql) throws IOException {
+    System.out.println("Analyse des temps médians d'assignation par domaine...");
+    JSONObject result = searchJira(baseJql, 1000, null);
+    
+    // Utilisation d'une liste pour stocker toutes les durées afin de calculer la médiane
+    Map<String, Map<String, List<Double>>> valuesMap = new TreeMap<>();
 
-        if (result == null) {
-            return totalTime;
-        }
-
-        JSONArray issues = result.getJSONArray("issues");
-        long now = System.currentTimeMillis();
-
-        for (int i = 0; i < issues.length(); i++) {
-            JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
-            String status = fields.getJSONObject("status").getString("name");
-            String domain = identifyCategory(fields.optJSONArray("labels"), THEME_MAPPING);
-            if (domain == null) {
-                domain = "AUTRES";
-            }
-
-            // Détermination de l'acteur et du champ de date correspondant
-            String actor = "Replied by CODIX".equalsIgnoreCase(status) ? "LOCAM" : "Codix";
-            String dateField = "LOCAM".equals(actor) ? "customfield_13600" : "customfield_12701";
-
-            String dateStr = fields.optString(dateField, null);
-            // Fallback sur la date de création si le champ est vide
-            if (dateStr == null || "null".equals(dateStr) || dateStr.isEmpty()) {
-                dateStr = fields.optString("created", null);
-            }
-
-            if (dateStr != null) {
-                long startTime = parseJiraDate(dateStr);
-                double deltaDays = (double) (now - startTime) / (1000 * 60 * 60 * 24);
-
-                totalTime.putIfAbsent(domain, createActorMapDouble());
-                counts.putIfAbsent(domain, createActorMapInt());
-
-                totalTime.get(domain).put(actor, totalTime.get(domain).get(actor) + deltaDays);
-                counts.get(domain).put(actor, counts.get(domain).get(actor) + 1);
-            }
-        }
-
-        // Calcul des moyennes par acteur
-        Map<String, Map<String, Double>> averages = new TreeMap<>();
-        for (String dom : totalTime.keySet()) {
-            averages.put(dom, new HashMap<>());
-            for (String act : Arrays.asList("LOCAM", "Codix")) {
-                int count = counts.get(dom).getOrDefault(act, 0);
-                double avg = count > 0 ? totalTime.get(dom).get(act) / count : 0.0;
-                averages.get(dom).put(act, avg);
-            }
-        }
-        return averages;
+    if (result == null) {
+        return new TreeMap<>();
     }
+
+    JSONArray issues = result.getJSONArray("issues");
+    long now = System.currentTimeMillis();
+
+    for (int i = 0; i < issues.length(); i++) {
+        JSONObject fields = issues.getJSONObject(i).getJSONObject("fields");
+        String status = fields.getJSONObject("status").getString("name");
+        String domain = identifyCategory(fields.optJSONArray("labels"), THEME_MAPPING);
+        if (domain == null) {
+            domain = "AUTRES";
+        }
+
+        String actor = "Replied by CODIX".equalsIgnoreCase(status) ? "LOCAM" : "Codix";
+        String dateField = "LOCAM".equals(actor) ? "customfield_13600" : "customfield_12701";
+
+        String dateStr = fields.optString(dateField, null);
+        if (dateStr == null || "null".equals(dateStr) || dateStr.isEmpty()) {
+            dateStr = fields.optString("created", null);
+        }
+
+        if (dateStr != null) {
+            long startTime = parseJiraDate(dateStr);
+            double deltaDays = (double) (now - startTime) / (1000 * 60 * 60 * 24);
+
+            valuesMap.putIfAbsent(domain, new HashMap<>());
+            valuesMap.get(domain).putIfAbsent("LOCAM", new ArrayList<>());
+            valuesMap.get(domain).putIfAbsent("Codix", new ArrayList<>());
+            
+            valuesMap.get(domain).get(actor).add(deltaDays);
+        }
+    }
+
+    // Calcul des médianes par acteur
+    Map<String, Map<String, Double>> medians = new TreeMap<>();
+    for (String dom : valuesMap.keySet()) {
+        medians.put(dom, new HashMap<>());
+        for (String act : Arrays.asList("LOCAM", "Codix")) {
+            List<Double> times = valuesMap.get(dom).get(act);
+            double medianValue = 0.0;
+            
+            if (times != null && !times.isEmpty()) {
+                Collections.sort(times);
+                int size = times.size();
+                if (size % 2 == 0) {
+                    medianValue = (times.get(size / 2 - 1) + times.get(size / 2)) / 2.0;
+                } else {
+                    medianValue = times.get(size / 2);
+                }
+            }
+            medians.get(dom).put(act, medianValue);
+        }
+    }
+    return medians;
+}
 
     private Map<String, Double> createActorMapDouble() {
         Map<String, Double> m = new HashMap<>();

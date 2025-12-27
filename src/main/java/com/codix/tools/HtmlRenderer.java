@@ -104,13 +104,13 @@ public class HtmlRenderer {
         html.append("<div style='flex: 1;'>");
         html.append("<img src='").append(logoLocamB64).append("' style='height:35px; margin-bottom:10px;'><br>");
         html.append("<span class='kpi-value kpi-locam'>").append(pctLocam).append("%</span>");
-        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("LOCAM", 0.0))).append("</b></div>");
+        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age median : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("LOCAM", 0.0))).append("</b></div>");
         html.append("</div>");
         html.append("<div style='width: 1px; height: 80px; background-color: #eee;'></div>");
         html.append("<div style='flex: 1;'>");
         html.append("<img src='").append(logoCodixB64).append("' style='height:25px; margin-bottom:15px;'><br>");
         html.append("<span class='kpi-value kpi-codix'>").append(pctCodix).append("%</span>");
-        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age moyen : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("Codix", 0.0))).append("</b></div>");
+        html.append("<div style='font-size: 11px; color: #888; margin-top: 5px;'>Age median : <b>").append(String.format("%.1f j", globalDelays.getOrDefault("Codix", 0.0))).append("</b></div>");
         html.append("</div>");
         html.append("</div>");
         html.append("</div>");
@@ -176,7 +176,7 @@ public class HtmlRenderer {
     private void appendDomainTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
         List<String> visibleKeys = new ArrayList<>();
         for (String d : stats.keySet()) { if (!"AUTRES".equals(d) || (stats.get(d).get("LOCAM") + stats.get(d).get("Codix")) > 0) visibleKeys.add(d); }
-        html.append("<div class='table-section-title'>Répartition par Domaine principal</div><button id='btn-domain' class='copy-btn' onclick=\"copyTable('tab-domain', 'btn-domain')\">Copier</button>");
+        html.append("<div class='table-section-title'>Répartition par Domaine principal</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-domain', this)\">Copier Image</button>");
         html.append("<table id='tab-domain'><thead><tr><th>Acteur</th>");
         for (String d : visibleKeys) html.append("<th>").append(d).append("</th>");
         html.append("<th>TOTAL</th></tr></thead><tbody>");
@@ -196,7 +196,7 @@ public class HtmlRenderer {
     private void appendThemeTable(StringBuilder html, Map<String, Map<String, Integer>> stats) {
         List<String> visibleKeys = new ArrayList<>();
         for (String t : stats.keySet()) { if (!"AUTRES".equals(t) || (stats.get(t).get("LOCAM") + stats.get(t).get("Codix")) > 0) visibleKeys.add(t); }
-        html.append("<div class='table-section-title'>Répartition par Thème technique</div><button id='btn-theme' class='copy-btn' onclick=\"copyTable('tab-theme', 'btn-theme')\">Copier</button>");
+        html.append("<div class='table-section-title'>Répartition par Thème technique</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-theme', this)\">Copier Image</button>");
         html.append("<table id='tab-theme'><thead><tr><th>Acteur</th>");
         for (String t : visibleKeys) html.append("<th>").append(t).append("</th>");
         html.append("<th>TOTAL</th></tr></thead><tbody>");
@@ -210,7 +210,7 @@ public class HtmlRenderer {
     }
 
     private void appendFunctionalDomainTableVertical(StringBuilder html, Map<String, Map<String, Integer>> stats) {
-        html.append("<div class='table-section-title'>Analyse par Domaine Fonctionnel</div><button id='btn-func' class='copy-btn' onclick=\"copyTable('tab-func', 'btn-func')\">Copier</button>");
+        html.append("<div class='table-section-title'>Analyse par Domaine Fonctionnel</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-func', this)\">Copier Image</button>");
         html.append("<table id='tab-func'><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine Fonctionnel</th><th>LOCAM</th><th>CODIX</th><th>TOTAL</th></tr></thead><tbody>");
         int maxVal = 0;
         for (Map<String, Integer> s : stats.values()) maxVal = Math.max(maxVal, Math.max(s.get("LOCAM"), s.get("Codix")));
@@ -223,7 +223,8 @@ public class HtmlRenderer {
     }
 
     private void appendAverageTimeTable(StringBuilder html, Map<String, Map<String, Double>> stats) {
-        html.append("<div class='table-section-title'>Temps d'assignation moyen (jours)</div><table><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine</th><th>LOCAM</th><th>CODIX</th></tr></thead><tbody>");
+        html.append("<div class='table-section-title'>Temps d'assignation moyen (jours)</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-avg', this)\">Copier Image</button>");
+        html.append("<table id='tab-avg'><thead><tr><th style='text-align:left; padding-left:15px;'>Domaine</th><th>LOCAM</th><th>CODIX</th></tr></thead><tbody>");
         for (String domain : stats.keySet()) {
             double l = stats.get(domain).get("LOCAM"), c = stats.get(domain).get("Codix");
             if ("AUTRES".equals(domain) && (l + c == 0)) continue;
@@ -233,7 +234,7 @@ public class HtmlRenderer {
     }
 
     private void appendHistoryTable(StringBuilder html, JiraService.HistoryData history) {
-        html.append("<div class='table-section-title'>Historique Hebdomadaire</div><button id='btn-history' class='copy-btn' onclick=\"copyTable('tab-history', 'btn-history')\">Copier</button>");
+        html.append("<div class='table-section-title'>Historique Hebdomadaire</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-history', this)\">Copier Image</button>");
         html.append("<table id='tab-history'><thead><tr><th>Indicateur</th>");
         for (String label : history.labels) html.append("<th>").append(label).append("</th>");
         html.append("</tr></thead><tbody>");
@@ -251,7 +252,7 @@ public class HtmlRenderer {
     }
 
     private void appendCategoryTable(StringBuilder html, JiraService.CategoryHistoryData data) {
-        html.append("<div class='table-section-title'>Historique par Catégorie</div><button id='btn-cat' class='copy-btn' onclick=\"copyTable('tab-cat', 'btn-cat')\">Copier</button>");
+        html.append("<div class='table-section-title'>Historique par Catégorie</div><button class='copy-btn' onclick=\"copyTableAsImage('tab-cat', this)\">Copier Image</button>");
         html.append("<table id='tab-cat'><thead><tr><th>Catégorie</th>");
         for (String label : data.labels) html.append("<th>").append(label).append("</th>");
         html.append("</tr></thead><tbody>");
@@ -310,7 +311,16 @@ public class HtmlRenderer {
 
         html.append("new Chart(document.getElementById('chartDomain'), { type: 'bar', data: { labels: ").append(toJsonArrayString(domains)).append(", datasets: [{ label: 'LOCAM', data: ").append(dataValues(dLocam)).append(", backgroundColor: '").append(COL_RED_LOCAM).append("' }, { label: 'CODIX', data: ").append(dataValues(dCodix)).append(", backgroundColor: '").append(COL_BLUE).append("' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { legend: { position: 'bottom' }, datalabels: { display: false } } } });");
 
-        html.append("function copyTable(tableId, btnId) { var range = document.createRange(); range.selectNode(document.getElementById(tableId)); window.getSelection().removeAllRanges(); window.getSelection().addRange(range); document.execCommand('copy'); var btn = document.getElementById(btnId); btn.innerText = 'Copié !'; setTimeout(()=> btn.innerText = 'Copier', 2000); }");
+        // Nouvelle fonction de copie image pour les tableaux
+        html.append("async function copyTableAsImage(tableId, btn) { ")
+            .append("const table = document.getElementById(tableId); ")
+            .append("const canvas = await html2canvas(table, { scale: 2, backgroundColor: '#ffffff' }); ")
+            .append("canvas.toBlob(async (blob) => { ")
+            .append("const data = [new ClipboardItem({ 'image/png': blob })]; ")
+            .append("await navigator.clipboard.write(data); ")
+            .append("const oldText = btn.innerText; btn.innerText = 'Copié !'; ")
+            .append("setTimeout(() => btn.innerText = oldText, 2000); ")
+            .append("}); }");
         
         html.append("function copyDashboardAsImage() { const btn = document.querySelector('.copy-img-btn'); const originalText = btn.innerText; btn.innerText = 'Capture...'; html2canvas(document.getElementById('capture-area'), { scale: 2, useCORS: true, allowTaint: true }).then(canvas => { canvas.toBlob(blob => { const item = new ClipboardItem({ 'image/png': blob }); navigator.clipboard.write([item]).then(() => { btn.innerText = 'Copié !'; btn.style.backgroundColor = '#27ae60'; setTimeout(() => { btn.innerText = originalText; btn.style.backgroundColor = '").append(COL_OUTLOOK).append("'; }, 2000); }); }); }); }");
 
