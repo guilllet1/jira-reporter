@@ -1,4 +1,4 @@
-package com.codix.tools;
+package com.codix.tools.btteamreport;
 
 import java.io.FileWriter;
 import java.io.IOException;

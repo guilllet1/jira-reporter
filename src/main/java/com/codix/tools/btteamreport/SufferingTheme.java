@@ -1,4 +1,4 @@
-package com.codix.tools;
+package com.codix.tools.btteamreport;
 
 public class SufferingTheme {
     private String name;

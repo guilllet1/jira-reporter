@@ -1,4 +1,4 @@
-package com.codix.tools;
+package com.codix.tools.btteamreport;
 
 import java.io.FileInputStream;
 import java.io.PrintStream;
