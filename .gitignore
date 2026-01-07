@@ -1,6 +1,6 @@
 config.properties
 /target/
-/target/absences/
+/target/absence/
 Rapport_Planning_LOCAM.html
 Rapport_Jira_Domaines.html
 Rapport_Analyse_Themes.html
