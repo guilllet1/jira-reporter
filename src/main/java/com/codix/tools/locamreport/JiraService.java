@@ -25,7 +25,7 @@ public class JiraService {
     private static final DateTimeFormatter JIRA_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     // 1. MAPPING DOMAINES (Existant)
-    private static final Map<String, String> THEME_MAPPING = new HashMap<>();
+    public static final Map<String, String> THEME_MAPPING = new HashMap<>();
 
     static {
         THEME_MAPPING.put("AD", "BI");
@@ -329,11 +329,11 @@ public class JiraService {
         }
     }
 
-    private JSONObject searchJira(String jql, int maxResults, String expand) throws IOException {
+    public JSONObject searchJira(String jql, int maxResults, String expand) throws IOException {
         // Ajout des champs created, customfield_12701 et customfield_13600
         String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8)
                 + "&maxResults=" + maxResults
-                + "&fields=status,labels,created,customfield_12701,customfield_13600";
+                + "&fields=status,labels,created,customfield_12701,customfield_13600,summary";
 
         if (expand != null) {
             url += "&expand=" + expand;

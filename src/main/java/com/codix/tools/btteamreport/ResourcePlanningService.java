@@ -64,7 +64,7 @@ public class ResourcePlanningService {
         TARGET_USERS.put("ypetrov", "Yordan Petrov");
     }
 
-    private static final String[] ALL_THEMES = {
+    public static final String[] ALL_THEMES = {
         "AD", "ELLISPHERE", "GED", "TH1", "TH10", "TH11", "TH12", "TH13", "TH14", "TH16_API",
         "TH16_Interfaces", "TH17_Migration", "TH18", "TH19", "TH2", "TH20", "TH3", "TH4",
         "TH5.1", "TH5.2", "TH6.1", "TH6.2", "TH6.3", "TH7", "TH8", "TRANSVERSE"
