@@ -41,11 +41,10 @@ public class MedianWorkloadTest {
             ResourcePlanningService service = new ResourcePlanningService(jiraUrl, token);
             Map<String, List<Double>> themeWorkloads = new HashMap<>();
 
-            // TITRE DEMANDÉ
-            System.out.println("=== ANALYSE DU WORKLOAD MÉDIAN PAR THEME (4 DERNIERS MOIS) ===");
+            System.out.println("=== ANALYSE DU WORKLOAD MÉDIAN PAR THEME (8 DERNIERES SEMAINES) ===");
 
-            // JQL : Tickets modifiés ces 120 derniers jours avec du temps loggé
-            String jql = "project in (LOCAMWEB, LOCAMDEV) AND updated >= \"-120d\" AND timespent > 0";
+            // JQL : Tickets modifiés ces 8 dernières semaines avec du temps loggé
+            String jql = "project in (LOCAMWEB, LOCAMDEV) AND updated >= \"-56d\" AND timespent > 0";
             int startAt = 0, total = 0;
 
             do {
@@ -69,18 +68,21 @@ public class MedianWorkloadTest {
                 System.out.print(".");
             } while (startAt < total);
 
-            // 2. Affichage des résultats
-            System.out.println("\n\n--- RÉSULTATS : MÉDIANE DE CHARGE PAR THÈME ---");
-            System.out.format("%-15s | %-10s | %-15s%n", "THÈME", "TICKETS", "MÉDIANE (Jours)");
-            System.out.println("-------------------------------------------------------");
+            // 2. Affichage des résultats au format "Code Java"
+            System.out.println("\n\n--- CODE GÉNÉRÉ POUR THEME_MEDIANS ---");
+            System.out.println("private static final Map<String, Double> THEME_MEDIANS = new HashMap<>();\n");
+            System.out.println("    static {");
 
             themeWorkloads.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> {
                     double median = calculateMedian(entry.getValue());
-                    System.out.format("%-15s | %-10d | %-15.2f%n", 
-                        entry.getKey(), entry.getValue().size(), median);
+                    // Utilisation de Locale.US pour forcer le séparateur décimal "."
+                    System.out.format(Locale.US, "        THEME_MEDIANS.put(\"%s\", %.2f);%n", 
+                        entry.getKey(), median);
                 });
+
+            System.out.println("    }");
 
         } catch (Exception e) { e.printStackTrace(); }
     }
@@ -95,7 +97,10 @@ public class MedianWorkloadTest {
         
         for (int h = 0; h < histories.length(); h++) {
             JSONObject hist = histories.getJSONObject(h);
-            String author = hist.getJSONObject("author").optString("name", "");
+            JSONObject authorObj = hist.optJSONObject("author");
+            if (authorObj == null) continue;
+            
+            String author = authorObj.optString("name", "");
             
             // On ne filtre que les membres de l'équipe
             if (!ResourcePlanningService.TARGET_USERS.containsKey(author)) continue;

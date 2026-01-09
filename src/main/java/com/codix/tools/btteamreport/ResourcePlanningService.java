@@ -73,32 +73,32 @@ public class ResourcePlanningService {
     private static final Map<String, Double> THEME_MEDIANS = new HashMap<>();
 
     static {
-        THEME_MEDIANS.put("AD", 0.08);
-        THEME_MEDIANS.put("AUTRES", 0.21);
-        THEME_MEDIANS.put("ELLISPHERE", 0.48);
-        THEME_MEDIANS.put("GED", 0.55);
-        THEME_MEDIANS.put("TH1", 0.38);
-        THEME_MEDIANS.put("TH10", 0.73);
-        THEME_MEDIANS.put("TH11", 0.43);
-        THEME_MEDIANS.put("TH12", 0.13);
-        THEME_MEDIANS.put("TH13", 0.23);
-        THEME_MEDIANS.put("TH14", 0.32);
-        THEME_MEDIANS.put("TH16_API", 0.49);
-        THEME_MEDIANS.put("TH16_Interfaces", 0.61);
-        THEME_MEDIANS.put("TH17_Migration", 0.33);
+        THEME_MEDIANS.put("AD", 0.07);
+        THEME_MEDIANS.put("AUTRES", 0.24);
+        THEME_MEDIANS.put("ELLISPHERE", 2.77);
+        THEME_MEDIANS.put("GED", 0.52);
+        THEME_MEDIANS.put("TH1", 0.71);
+        THEME_MEDIANS.put("TH10", 0.64);
+        THEME_MEDIANS.put("TH11", 0.60);
+        THEME_MEDIANS.put("TH12", 0.06);
+        THEME_MEDIANS.put("TH13", 0.39);
+        THEME_MEDIANS.put("TH14", 0.93);
+        THEME_MEDIANS.put("TH16_API", 0.60);
+        THEME_MEDIANS.put("TH16_Interfaces", 0.62);
+        THEME_MEDIANS.put("TH17_Migration", 0.31);
         THEME_MEDIANS.put("TH18", 0.18);
-        THEME_MEDIANS.put("TH19", 0.42);
-        THEME_MEDIANS.put("TH2", 0.46);
-        THEME_MEDIANS.put("TH20", 0.31);
-        THEME_MEDIANS.put("TH3", 0.55);
-        THEME_MEDIANS.put("TH5.1", 0.24);
-        THEME_MEDIANS.put("TH5.2", 0.25);
-        THEME_MEDIANS.put("TH6.1", 0.26);
-        THEME_MEDIANS.put("TH6.2", 0.36);
-        THEME_MEDIANS.put("TH6.3", 0.24);
-        THEME_MEDIANS.put("TH7", 0.52);
-        THEME_MEDIANS.put("TH8", 0.30);
-        THEME_MEDIANS.put("TRANSVERSE", 1.55);
+        THEME_MEDIANS.put("TH19", 0.32);
+        THEME_MEDIANS.put("TH2", 0.48);
+        THEME_MEDIANS.put("TH20", 0.65);
+        THEME_MEDIANS.put("TH3", 0.68);
+        THEME_MEDIANS.put("TH5.1", 0.39);
+        THEME_MEDIANS.put("TH5.2", 0.33);
+        THEME_MEDIANS.put("TH6.1", 0.28);
+        THEME_MEDIANS.put("TH6.2", 0.51);
+        THEME_MEDIANS.put("TH6.3", 0.85);
+        THEME_MEDIANS.put("TH7", 0.51);
+        THEME_MEDIANS.put("TH8", 0.27);
+        THEME_MEDIANS.put("TRANSVERSE", 1.61);
     }
 
     private static final List<String> THEMES_LIST = Arrays.asList(
