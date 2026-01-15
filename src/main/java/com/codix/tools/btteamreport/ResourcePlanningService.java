@@ -594,6 +594,19 @@ public class ResourcePlanningService {
                         Path logFile = logDir.resolve("hr_" + monthKey + ".html");
                         Files.writeString(logFile, html, StandardCharsets.UTF_8);
 
+                        // LOG DE DÉBOGAGE
+                        if (html.length() < 500) {
+                            System.err.println("⚠️ [HR] ALERTE : La page reçue pour " + monthKey + " est anormalement courte (" + html.length() + " octets).");
+                            System.err.println("    Vérifiez manuellement le fichier " + logFile.toAbsolutePath());
+                        } else {
+                            System.out.println("[HR] Données reçues (" + html.length() + " octets) sauvegardées.");
+                        }
+
+                        if (html.contains("name=\"login\"") || html.contains("type=\"password\"")) {
+                            System.err.println("⚠️ [HR] ALERTE : Redirection vers la page de LOGIN détectée. Le cookie est invalide.");
+                            break;
+                        }
+
                         if (html.contains("<form") && html.contains("password")) {
                             System.err.println("⚠️ Session expirée (Page de login reçue). Mettez à jour le cookie.");
                             break;
@@ -611,20 +624,28 @@ public class ResourcePlanningService {
                                     .filter(entry -> {
                                         String targetName = entry.getValue();
                                         // Gestion des accents et cas particuliers (Valérie / Wafa)
-                                        if (targetName.equalsIgnoreCase("Valérie Robert") && fullNameFromHtml.equalsIgnoreCase("Valerie Robert")) return true;
-                                        if (targetName.equalsIgnoreCase("Wafa Ben Fadhloun") && fullNameFromHtml.equalsIgnoreCase("Wafa Fadhloun")) return true;
+                                        if (targetName.equalsIgnoreCase("Valérie Robert") && fullNameFromHtml.equalsIgnoreCase("Valerie Robert")) {
+                                            return true;
+                                        }
+                                        if (targetName.equalsIgnoreCase("Wafa Ben Fadhloun") && fullNameFromHtml.equalsIgnoreCase("Wafa Fadhloun")) {
+                                            return true;
+                                        }
                                         return targetName.equalsIgnoreCase(fullNameFromHtml);
                                     })
                                     .map(Map.Entry::getKey).findFirst().orElse(null);
 
-                            if (login == null) continue;
+                            if (login == null) {
+                                continue;
+                            }
 
                             // Analyse des cellules de jours (ID commençant par cell_)
                             Elements cells = row.select("td[id^=cell_]");
                             for (Element cell : cells) {
                                 String id = cell.id();
-                                if (id.length() < 13) continue;
-                                
+                                if (id.length() < 13) {
+                                    continue;
+                                }
+
                                 String datePart = id.substring(5, 13);
                                 LocalDate cellDate = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("yyyyMMdd"));
 
@@ -662,7 +683,9 @@ public class ResourcePlanningService {
         // 3. Calcul des deltas et Affichage de vérification
         System.out.println("\n--- VÉRIFICATION DES PRÉSENCES DÉTECTÉES ---");
         System.out.format("%-22s", "Utilisateur");
-        for (Integer wn : data.nextWeeks) System.out.format(" | Sem %-7d", wn);
+        for (Integer wn : data.nextWeeks) {
+            System.out.format(" | Sem %-7d", wn);
+        }
         System.out.println("\n------------------------------------------------------------------------------------");
 
         for (String login : TARGET_USERS.keySet()) {
@@ -670,10 +693,10 @@ public class ResourcePlanningService {
             for (Integer weekNum : data.nextWeeks) {
                 int count = (uniquePresenceDays.containsKey(login) && uniquePresenceDays.get(login).containsKey(weekNum))
                         ? uniquePresenceDays.get(login).get(weekNum).size() : 0;
-                
+
                 int delta = count - 5;
                 data.setWeeklyDelta(login, weekNum, delta);
-                
+
                 System.out.format(" | %dj (Δ%+d) ", count, delta);
             }
             System.out.println();
@@ -691,6 +714,9 @@ public class ResourcePlanningService {
      * Helper pour l'appel HTTP POST
      */
     private String fetchHrPage(OkHttpClient client, String cookie, int month, int year) throws Exception {
+        // On s'assure que le cookie commence bien par PHPSESSID= si ce n'est pas déjà le cas
+        String cookieHeader = cookie.contains("=") ? cookie : "PHPSESSID=" + cookie;
+
         RequestBody formBody = new FormBody.Builder()
                 .add("lv_depts[]", "all_users")
                 .add("cm", String.format("%02d", month))
@@ -701,12 +727,20 @@ public class ResourcePlanningService {
         Request request = new Request.Builder()
                 .url(HR_URL)
                 .post(formBody)
-                .addHeader("Cookie", cookie)
-                .addHeader("User-Agent", "Mozilla/5.0")
+                .addHeader("Cookie", cookieHeader)
+                // Ajout d'en-têtes pour imiter un vrai navigateur
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                .addHeader("Referer", "https://hrcenter.codixfr.private/HR/index.php?tab=6")
+                .addHeader("Origin", "https://hrcenter.codixfr.private")
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
-            return response.isSuccessful() ? response.body().string() : null;
+            if (!response.isSuccessful()) {
+                System.err.println("[HR] Erreur HTTP : " + response.code());
+                return null;
+            }
+            return response.body().string();
         }
     }
 
