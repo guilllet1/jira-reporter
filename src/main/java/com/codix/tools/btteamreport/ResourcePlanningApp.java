@@ -44,7 +44,7 @@ public class ResourcePlanningApp {
             }
 
             String projects = "LOCAMWEB, LOCAMDEV";
-            String outputFile = "Rapport_Planning_LOCAM.html";
+            String outputFile = "DASHBOARD_BTTEAM.html";
             int nbWeeks = 8; // Analyse des 8 dernières semaines pour les médianes
 
             ResourcePlanningService service = new ResourcePlanningService(jiraUrl, token);

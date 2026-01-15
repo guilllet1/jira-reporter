@@ -71,7 +71,7 @@
                             <goal>single</goal>
                         </goals>
                         <configuration>
-                            <finalName>DuplicateThemeReport</finalName>
+                            <finalName>DASHBOARD_CLEANUP</finalName>
                             <appendAssemblyId>false</appendAssemblyId>
                             <archive>
                                 <manifest>

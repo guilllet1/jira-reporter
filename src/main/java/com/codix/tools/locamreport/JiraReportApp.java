@@ -38,9 +38,9 @@ public class JiraReportApp {
             JiraService.CategoryHistoryData categoryStats = jiraService.getCodixCategoryHistory(jql);
 
             Map<String, Double> globalDelays = jiraService.getGlobalAverageDelays(jql);
-renderer.generate(domainStats, functionalStats, themeStats, avgTimeStats, globalDelays, historyStats, categoryStats, props.getProperty("output.file"));
+            renderer.generate(domainStats, functionalStats, themeStats, avgTimeStats, globalDelays, historyStats, categoryStats, "DASHBOARD_COPROJ.html");
 
-            System.out.println("Succès ! Rapport généré : " + props.getProperty("output.file"));
+            System.out.println("Succès ! Rapport généré : DASHBOARD_COPROJ.html");
 
         } catch (Exception e) {
             e.printStackTrace();

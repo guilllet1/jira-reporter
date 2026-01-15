@@ -169,7 +169,7 @@ public class JiraDownloader {
         }
 
         System.out.println("3. Génération du rapport HTML...");
-        JiraHtmlReport.generate(processedDataList, "Analyses_IA_Auto.html");
+        JiraHtmlReport.generate(processedDataList, "DASHBOARD_MANAGEMENT.html");
 
         System.out.println("Terminé !");
         JiraUtils.printCostEstimation(provider, "openai".equalsIgnoreCase(provider) ? config.getOpenAIModel() : config.getGeminiModel());

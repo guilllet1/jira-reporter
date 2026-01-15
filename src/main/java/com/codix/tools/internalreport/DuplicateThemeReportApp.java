@@ -37,7 +37,7 @@ public class DuplicateThemeReportApp {
 
             // Nouveau JQL incluant le filtre sur la mise à jour client
             String jql = "project = LOCAMWEB AND created >= '2025-06-01' and \"Reopened/Updated by Client\" is not EMPTY ORDER BY created DESC";
-            String filename = "Rapport_Analyse_Themes.html";
+            String filename = "DASHBOARD_CLEANUP.html";
 
             System.out.println("Analyse des tickets LOCAMWEB...");
             // On force la récupération des champs summary et labels
