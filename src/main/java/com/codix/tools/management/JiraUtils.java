@@ -1,6 +1,7 @@
 // VERSION: V27 - JIRA UTILS - PARTIE 1
 package com.codix.tools.management;
 
+import com.codix.tools.AppConfig;
 import org.json.JSONArray;
 import org.json.JSONObject;
 

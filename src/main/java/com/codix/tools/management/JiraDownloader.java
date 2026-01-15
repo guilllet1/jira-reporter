@@ -1,6 +1,7 @@
 // VERSION: V27 - JIRA DOWNLOADER (Corrected TicketData)
 package com.codix.tools.management;
 
+import com.codix.tools.AppConfig;
 import java.io.PrintStream;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;

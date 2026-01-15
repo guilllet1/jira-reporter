@@ -1,4 +1,4 @@
-package com.codix.tools.management;
+package com.codix.tools;
 
 import java.io.FileInputStream;
 import java.io.IOException;
