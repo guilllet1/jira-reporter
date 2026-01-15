@@ -10,17 +10,22 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import okhttp3.*;
+import javax.net.ssl.*;
+import java.util.concurrent.TimeUnit;
 
 public class ResourcePlanningService {
 
@@ -29,6 +34,7 @@ public class ResourcePlanningService {
     private final OkHttpClient client;
     private static final DateTimeFormatter JIRA_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final double SECONDS_IN_MD = 25200.0;
+    private static final String HR_URL = "https://hrcenter.codixfr.private/HR//index.php?tab=6";
 
     public static final Map<String, String> TARGET_USERS = new LinkedHashMap<>();
 
@@ -543,107 +549,192 @@ public class ResourcePlanningService {
         public List<SufferingTheme> overCapacity = new ArrayList<>();
     }
 
-    /**
-     * Analyse consolidée du répertoire 'absence' (Absences + Présences). Gère
-     * les correspondances de noms spécifiques pour le HR Center.
-     */
-    public Map<String, Integer> loadHRData(String directoryPath, String monthPrefix, PlanningData data) throws Exception {
+    public Map<String, Integer> loadHRData(String cookie, PlanningData data) {
         Map<String, Integer> totalAbsences = new HashMap<>();
-        File folder = new File(directoryPath);
-        if (!folder.exists() || !folder.isDirectory()) {
-            return totalAbsences;
-        }
-
-        File[] files = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".html"));
-        if (files == null) {
-            return totalAbsences;
-        }
-
-        // Collecte des jours de présence uniques par utilisateur et par semaine
+        // Map<Login, Map<WeekNum, Set<Dates>>> pour garantir l'unicité des jours de présence
         Map<String, Map<Integer, Set<LocalDate>>> uniquePresenceDays = new HashMap<>();
 
-        // Liste des libellés considérés comme une présence (incluant les activités pro)
-        List<String> presenceLabels = Arrays.asList(
-                "Work From Home", "In office", "Workday",
-                "Business trip", "Client meeting at Codix", "Assistance on remote"
-        );
-
-        for (File file : files) {
-            Document doc = Jsoup.parse(file, "UTF-8");
-            Elements rows = doc.select("tr:has(td.user_name_td)");
-
-            for (Element row : rows) {
-                // Nettoyage du nom (gestion des espaces insécables U+00A0)
-                String fullNameFromHtml = row.select("td.user_name_td").text().trim().replace('\u00A0', ' ');
-
-                // Identification du login avec gestion des cas spécifiques
-                String login = TARGET_USERS.entrySet().stream()
-                        .filter(entry -> {
-                            String targetName = entry.getValue(); // ex: "Valérie Robert"
-
-                            // Correspondance : "Valérie Robert" -> "Valerie Robert"
-                            if (targetName.equalsIgnoreCase("Valérie Robert") && fullNameFromHtml.equalsIgnoreCase("Valerie Robert")) {
-                                return true;
-                            }
-
-                            // Correspondance : "Wafa Ben Fadhloun" -> "Wafa Fadhloun"
-                            if (targetName.equalsIgnoreCase("Wafa Ben Fadhloun") && fullNameFromHtml.equalsIgnoreCase("Wafa Fadhloun")) {
-                                return true;
-                            }
-
-                            return targetName.equalsIgnoreCase(fullNameFromHtml);
-                        })
-                        .map(Map.Entry::getKey).findFirst().orElse(null);
-
-                if (login == null) {
-                    continue;
-                }
-
-                Elements cells = row.select("td[id^=cell_]");
-                for (Element cell : cells) {
-                    String id = cell.id(); // format cell_YYYYMMDD_...
-                    if (id.length() < 13) {
-                        continue;
-                    }
-                    String datePart = id.substring(5, 13);
-
-                    // 1. Absences du mois (pour le calcul de tension)
-                    if (datePart.startsWith(monthPrefix)) {
-                        if (cell.hasClass("paid_leave") || cell.hasClass("sick_leave") || cell.hasClass("compensation_leave")) {
-                            totalAbsences.merge(login, 1, Integer::sum);
-                        }
-                    }
-
-                    // 2. Présences hebdomadaires (pour le calcul du delta)
-                    try {
-                        LocalDate cellDate = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("yyyyMMdd"));
-                        for (Integer weekNum : data.nextWeeks) {
-                            WeekRange range = data.weekDates.get(weekNum);
-                            if (!cellDate.isBefore(range.start) && !cellDate.isAfter(range.end)) {
-                                String title = cell.attr("title").trim();
-                                if (presenceLabels.stream().anyMatch(l -> l.equalsIgnoreCase(title))) {
-                                    uniquePresenceDays.computeIfAbsent(login, k -> new HashMap<>())
-                                            .computeIfAbsent(weekNum, k -> new HashSet<>())
-                                            .add(cellDate);
-                                }
-                                break;
-                            }
-                        }
-                    } catch (Exception ignored) {
-                    }
-                }
+        try {
+            // 1. Préparation du répertoire de logs
+            Path logDir = Paths.get("logs");
+            if (!Files.exists(logDir)) {
+                Files.createDirectories(logDir);
             }
+
+            OkHttpClient client = getUnsafeOkHttpClient();
+            LocalDate today = LocalDate.now();
+            LocalDate endDate = today.plusWeeks(4);
+            Set<String> processedMonths = new HashSet<>();
+
+            // Libellés de présence (issus de ta logique de référence)
+            List<String> presenceLabels = Arrays.asList(
+                    "Work From Home", "In office", "Workday",
+                    "Business trip", "Client meeting at Codix", "Assistance on remote"
+            );
+
+            LocalDate cursor = today;
+            while (!cursor.isAfter(endDate)) {
+                int month = cursor.getMonthValue();
+                int year = cursor.getYear();
+                String monthKey = String.format("%04d%02d", year, month);
+
+                if (!processedMonths.contains(monthKey)) {
+                    System.out.println("[HR] Récupération des données pour " + monthValueToName(month) + " " + year + "...");
+
+                    String html = null;
+                    try {
+                        html = fetchHrPage(client, cookie, month, year);
+                    } catch (Exception e) {
+                        System.err.println("⚠️ Impossible de joindre le HR Center : " + e.getMessage());
+                        break; // On arrête si le serveur est injoignable
+                    }
+
+                    if (html != null) {
+                        // Sauvegarde de la page HTML
+                        Path logFile = logDir.resolve("hr_" + monthKey + ".html");
+                        Files.writeString(logFile, html, StandardCharsets.UTF_8);
+
+                        if (html.contains("<form") && html.contains("password")) {
+                            System.err.println("⚠️ Session expirée (Page de login reçue). Mettez à jour le cookie.");
+                            break;
+                        }
+
+                        Document doc = Jsoup.parse(html);
+                        // Sélection des lignes utilisateurs via la classe CSS spécifique
+                        Elements rows = doc.select("tr:has(td.user_name_td)");
+
+                        for (Element row : rows) {
+                            String fullNameFromHtml = row.select("td.user_name_td").text().trim().replace('\u00A0', ' ');
+
+                            // Mapping Login <-> Nom Complet
+                            String login = TARGET_USERS.entrySet().stream()
+                                    .filter(entry -> {
+                                        String targetName = entry.getValue();
+                                        // Gestion des accents et cas particuliers (Valérie / Wafa)
+                                        if (targetName.equalsIgnoreCase("Valérie Robert") && fullNameFromHtml.equalsIgnoreCase("Valerie Robert")) return true;
+                                        if (targetName.equalsIgnoreCase("Wafa Ben Fadhloun") && fullNameFromHtml.equalsIgnoreCase("Wafa Fadhloun")) return true;
+                                        return targetName.equalsIgnoreCase(fullNameFromHtml);
+                                    })
+                                    .map(Map.Entry::getKey).findFirst().orElse(null);
+
+                            if (login == null) continue;
+
+                            // Analyse des cellules de jours (ID commençant par cell_)
+                            Elements cells = row.select("td[id^=cell_]");
+                            for (Element cell : cells) {
+                                String id = cell.id();
+                                if (id.length() < 13) continue;
+                                
+                                String datePart = id.substring(5, 13);
+                                LocalDate cellDate = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+                                // A. Statistiques d'absences pour le mois en cours (tension globale)
+                                if (datePart.startsWith(monthKey)) {
+                                    if (cell.hasClass("paid_leave") || cell.hasClass("sick_leave") || cell.hasClass("compensation_leave")) {
+                                        totalAbsences.merge(login, 1, Integer::sum);
+                                    }
+                                }
+
+                                // B. Présences pour le calcul du Delta (4 prochaines semaines)
+                                for (Integer weekNum : data.nextWeeks) {
+                                    WeekRange range = data.weekDates.get(weekNum);
+                                    if (range != null && !cellDate.isBefore(range.start) && !cellDate.isAfter(range.end)) {
+                                        String title = cell.attr("title").trim();
+                                        if (presenceLabels.stream().anyMatch(l -> l.equalsIgnoreCase(title))) {
+                                            uniquePresenceDays.computeIfAbsent(login, k -> new HashMap<>())
+                                                    .computeIfAbsent(weekNum, k -> new HashSet<>())
+                                                    .add(cellDate);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    processedMonths.add(monthKey);
+                }
+                cursor = cursor.plusMonths(1).withDayOfMonth(1);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Erreur lors du traitement HR : " + e.getMessage());
         }
 
-        // Calcul final des deltas (Présence réelle - 5 jours)
+        // 3. Calcul des deltas et Affichage de vérification
+        System.out.println("\n--- VÉRIFICATION DES PRÉSENCES DÉTECTÉES ---");
+        System.out.format("%-22s", "Utilisateur");
+        for (Integer wn : data.nextWeeks) System.out.format(" | Sem %-7d", wn);
+        System.out.println("\n------------------------------------------------------------------------------------");
+
         for (String login : TARGET_USERS.keySet()) {
+            System.out.format("%-22s", TARGET_USERS.get(login));
             for (Integer weekNum : data.nextWeeks) {
                 int count = (uniquePresenceDays.containsKey(login) && uniquePresenceDays.get(login).containsKey(weekNum))
                         ? uniquePresenceDays.get(login).get(weekNum).size() : 0;
-                data.setWeeklyDelta(login, weekNum, count - 5);
+                
+                int delta = count - 5;
+                data.setWeeklyDelta(login, weekNum, delta);
+                
+                System.out.format(" | %dj (Δ%+d) ", count, delta);
             }
+            System.out.println();
         }
+        System.out.println("------------------------------------------------------------------------------------\n");
+
         return totalAbsences;
+    }
+
+    private String monthValueToName(int month) {
+        return java.time.Month.of(month).getDisplayName(java.time.format.TextStyle.FULL, Locale.FRENCH);
+    }
+
+    /**
+     * Helper pour l'appel HTTP POST
+     */
+    private String fetchHrPage(OkHttpClient client, String cookie, int month, int year) throws Exception {
+        RequestBody formBody = new FormBody.Builder()
+                .add("lv_depts[]", "all_users")
+                .add("cm", String.format("%02d", month))
+                .add("cy", String.valueOf(year))
+                .add("filter_report", "Filter")
+                .build();
+
+        Request request = new Request.Builder()
+                .url(HR_URL)
+                .post(formBody)
+                .addHeader("Cookie", cookie)
+                .addHeader("User-Agent", "Mozilla/5.0")
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            return response.isSuccessful() ? response.body().string() : null;
+        }
+    }
+
+    /**
+     * Bypass SSL pour l'intranet
+     */
+    private OkHttpClient getUnsafeOkHttpClient() {
+        try {
+            final TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return new java.security.cert.X509Certificate[]{};
+                }
+            }};
+            final SSLContext sslContext = SSLContext.getInstance("SSL");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            return new OkHttpClient.Builder()
+                    .sslSocketFactory(sslContext.getSocketFactory(), (X509TrustManager) trustAllCerts[0])
+                    .hostnameVerifier((hostname, session) -> true)
+                    .connectTimeout(30, TimeUnit.SECONDS).build();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+        <action>
+            <actionName>CUSTOM-Run SSMT</actionName>
+            <displayName>Run SSMT</displayName>
+            <goals>
+                <goal>clean</goal>
+                <goal>compile</goal>
+                <goal>exec:java</goal>
+            </goals>
+            <properties>
+                <exec.mainClass>com.codix.test.SsmtTool</exec.mainClass>
+                
+                
+                <https.protocols>TLSv1,TLSv1.1,TLSv1.2</https.protocols>
+                <java.security.properties>java.security.override</java.security.properties>
+                <jdk.tls.client.protocols>TLSv1,TLSv1.1,TLSv1.2</jdk.tls.client.protocols>
+            </properties>
+        </action>
+        <action>
+            <actionName>run</actionName>
+            <packagings>
+                <packaging>jar</packaging>
+            </packagings>
+            <goals>
+                <goal>process-classes</goal>
+                <goal>org.codehaus.mojo:exec-maven-plugin:3.5.1:exec</goal>
+            </goals>
+            <properties>
+                <exec.vmArgs></exec.vmArgs>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
+                <exec.appArgs></exec.appArgs>
+                <exec.mainClass>com.codix.test.SsmtTester</exec.mainClass>
+                <exec.executable>java</exec.executable>
+            </properties>
+        </action>
+        <action>
+            <actionName>debug</actionName>
+            <packagings>
+                <packaging>jar</packaging>
+            </packagings>
+            <goals>
+                <goal>process-classes</goal>
+                <goal>org.codehaus.mojo:exec-maven-plugin:3.5.1:exec</goal>
+            </goals>
+            <properties>
+                <exec.vmArgs>-agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address}</exec.vmArgs>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
+                <exec.appArgs></exec.appArgs>
+                <exec.mainClass>com.codix.test.SsmtTester</exec.mainClass>
+                <exec.executable>java</exec.executable>
+                <jpda.listen>true</jpda.listen>
+            </properties>
+        </action>
+        <action>
+            <actionName>profile</actionName>
+            <packagings>
+                <packaging>jar</packaging>
+            </packagings>
+            <goals>
+                <goal>process-classes</goal>
+                <goal>org.codehaus.mojo:exec-maven-plugin:3.5.1:exec</goal>
+            </goals>
+            <properties>
+                <exec.vmArgs></exec.vmArgs>
+                <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
+                <exec.mainClass>com.codix.test.SsmtTester</exec.mainClass>
+                <exec.executable>java</exec.executable>
+                <exec.appArgs></exec.appArgs>
+            </properties>
+        </action>
+        <action>
+            <actionName>CUSTOM-Run SSMT TESTER</actionName>
+            <displayName>Run SSMT TESTER</displayName>
+            <goals>
+                <goal>clean</goal>
+                <goal>compile</goal>
+                <goal>exec:java</goal>
+            </goals>
+            <properties>
+                <exec.mainClass>com.codix.test.SsmtTester</exec.mainClass>
+                <https.protocols>TLSv1,TLSv1.1,TLSv1.2</https.protocols>
+                <java.security.properties>java.security.override</java.security.properties>
+                <jdk.tls.client.protocols>TLSv1,TLSv1.1,TLSv1.2</jdk.tls.client.protocols>
+            </properties>
+        </action>
+    </actions>

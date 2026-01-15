@@ -4,3 +4,9 @@ config.properties
 Rapport_Planning_LOCAM.html
 Rapport_Jira_Domaines.html
 Rapport_Analyse_Themes.html
+SSMT_Documentation_Final.xlsx
+tickets_state.json
+/pages_html_ssmt/
+/logs/
+/log/
+java.security.override
