@@ -1,6 +1,8 @@
 package com.codix.tools.locamreport;
 
+import com.codix.tools.AppConfig;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -10,20 +12,14 @@ public class JiraReportApp {
 
     public static void main(String[] args) {
         try {
+
             System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
-        try {
-            Properties props = new Properties();
-            try (FileInputStream fis = new FileInputStream("config.properties")) {
-                props.load(fis);
-            }
+            AppConfig config = AppConfig.getInstance();
+            JiraService jiraService = new JiraService(config.getJiraBaseUrl(), config.getApiToken());
+            String jql = config.getJql();
 
-            String jql = props.getProperty("jql");
-            JiraService jiraService = new JiraService(props.getProperty("jira.url"), props.getProperty("jira.token"));
             HtmlRenderer renderer = new HtmlRenderer();
 
             // Récupération des données
@@ -42,8 +38,9 @@ public class JiraReportApp {
 
             System.out.println("Succès ! Rapport généré : DASHBOARD_COPROJ.html");
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (IOException ex) {
+            System.getLogger(JiraReportApp.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
         }
+
     }
 }

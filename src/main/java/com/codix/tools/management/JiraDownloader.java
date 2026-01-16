@@ -1,4 +1,3 @@
-// VERSION: V27 - JIRA DOWNLOADER (Corrected TicketData)
 package com.codix.tools.management;
 
 import com.codix.tools.AppConfig;
@@ -15,7 +14,6 @@ public class JiraDownloader {
 
     private static final String LOG_DIR = "logs";
 
-    // Structures de données partagées
     public static class TicketData {
         public String key;
         public String summary;
@@ -23,10 +21,8 @@ public class JiraDownloader {
         public String priority;
         public String codixCategory;
         public String status;
-        
-        public String clientStatus;    // customfield_10602
-        public String lastKnownState;  // customfield_12000 (Renommé ici)
-        
+        public String clientStatus;
+        public String lastKnownState;
         public String dueDate;
         public String description;
         public String theme;
@@ -52,12 +48,16 @@ public class JiraDownloader {
     }
 
     public static void main(String[] args) {
-        try {
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception e) { e.printStackTrace(); }
+        // Bloc d'initialisation obligatoire (UTF-8)
+        try { 
+            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
+            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
+        } catch (Exception e) { 
+            e.printStackTrace(); 
+        }
 
-        AppConfig config = new AppConfig();
+        // Récupération de l'instance unique de configuration
+        AppConfig config = AppConfig.getInstance();
         String provider = config.getAIProvider();
 
         if (config.getApiToken() == null) {
@@ -72,7 +72,10 @@ public class JiraDownloader {
             } catch (Exception e) { System.err.println("Erreur log: " + e.getMessage()); }
         }
 
-        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(config.getHttpTimeout())).build();
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(config.getHttpTimeout()))
+                .build();
+        
         List<TicketData> processedDataList = new ArrayList<>();
         Map<String, String> jsonCache = new HashMap<>();
 
@@ -88,6 +91,7 @@ public class JiraDownloader {
         }
         System.out.println("   -> " + jiraTickets.size() + " tickets trouvés.");
 
+        // Nettoyage de la mémoire locale (supprime les tickets qui ne sont plus dans le scope JQL)
         List<String> ticketsToRemove = new ArrayList<>();
         Iterator<String> keys = stateMemory.keys();
         while (keys.hasNext()) {
@@ -133,6 +137,8 @@ public class JiraDownloader {
                 org.json.JSONObject memory = stateMemory.getJSONObject(ticketRef);
                 String storedDate = memory.optString("lastUpdated", null);
                 data.oldAnalysis = memory.optString("analysis", "Aucune analyse précédente.");
+                
+                // On utilise le cache si la date de mise à jour n'a pas bougé
                 if (data.clusterMaxDate != null && data.clusterMaxDate.equals(storedDate) && !data.oldAnalysis.isEmpty()) {
                     data.aiAnalysis = data.oldAnalysis;
                     needAICall = false;
@@ -173,6 +179,9 @@ public class JiraDownloader {
         JiraHtmlReport.generate(processedDataList, "DASHBOARD_MANAGEMENT.html");
 
         System.out.println("Terminé !");
-        JiraUtils.printCostEstimation(provider, "openai".equalsIgnoreCase(provider) ? config.getOpenAIModel() : config.getGeminiModel());
+        
+        // Estimation des coûts basée sur le modèle configuré
+        String currentModel = "openai".equalsIgnoreCase(provider) ? config.getOpenAIModel() : config.getGeminiModel();
+        JiraUtils.printCostEstimation(provider, currentModel);
     }
 }

@@ -178,7 +178,6 @@ public class ResourcePlanningRenderer {
     private void appendSufferingKpiCard(StringBuilder html, ResourcePlanningService.CapacityAlerts alerts) {
         html.append("<div class='kpi-card' style='border-top: 4px solid ").append(COL_RED_KPI).append("; text-align: left; min-width: 550px; flex: 2.5;'>");
         html.append("<div class='kpi-title' style='color:").append(COL_RED_KPI).append("; justify-content: flex-start;'>CAPACITY STATUS</div>");
-        html.append("<div style='font-size: 10px; color: #888; margin-bottom: 12px; font-style: italic;'>Ratio: workload (tickets × median) / capacity</div>");
         html.append("<div style='display: flex; gap: 15px;'>");
         html.append("<div style='flex: 1;'>");
         html.append("<div style='font-size: 10px; font-weight: 700; color: #c0392b; margin-bottom: 5px;'>⚠️ OVERLOAD</div>");

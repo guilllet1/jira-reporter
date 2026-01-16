@@ -83,27 +83,27 @@ public class ResourcePlanningService {
         THEME_MEDIANS.put("AUTRES", 0.24);
         THEME_MEDIANS.put("ELLISPHERE", 2.77);
         THEME_MEDIANS.put("GED", 0.52);
-        THEME_MEDIANS.put("TH1", 0.71);
-        THEME_MEDIANS.put("TH10", 0.64);
-        THEME_MEDIANS.put("TH11", 0.60);
+        THEME_MEDIANS.put("TH1", 0.39);
+        THEME_MEDIANS.put("TH10", 0.55);
+        THEME_MEDIANS.put("TH11", 0.64);
         THEME_MEDIANS.put("TH12", 0.06);
-        THEME_MEDIANS.put("TH13", 0.39);
-        THEME_MEDIANS.put("TH14", 0.93);
-        THEME_MEDIANS.put("TH16_API", 0.60);
-        THEME_MEDIANS.put("TH16_Interfaces", 0.62);
+        THEME_MEDIANS.put("TH13", 0.56);
+        THEME_MEDIANS.put("TH14", 0.96);
+        THEME_MEDIANS.put("TH16_API", 0.57);
+        THEME_MEDIANS.put("TH16_Interfaces", 0.53);
         THEME_MEDIANS.put("TH17_Migration", 0.31);
-        THEME_MEDIANS.put("TH18", 0.18);
-        THEME_MEDIANS.put("TH19", 0.32);
-        THEME_MEDIANS.put("TH2", 0.48);
-        THEME_MEDIANS.put("TH20", 0.65);
-        THEME_MEDIANS.put("TH3", 0.68);
+        THEME_MEDIANS.put("TH18", 0.21);
+        THEME_MEDIANS.put("TH19", 0.22);
+        THEME_MEDIANS.put("TH2", 0.51);
+        THEME_MEDIANS.put("TH20", 0.73);
+        THEME_MEDIANS.put("TH3", 0.57);
         THEME_MEDIANS.put("TH5.1", 0.39);
-        THEME_MEDIANS.put("TH5.2", 0.33);
-        THEME_MEDIANS.put("TH6.1", 0.28);
+        THEME_MEDIANS.put("TH5.2", 0.36);
+        THEME_MEDIANS.put("TH6.1", 0.42);
         THEME_MEDIANS.put("TH6.2", 0.51);
-        THEME_MEDIANS.put("TH6.3", 0.85);
-        THEME_MEDIANS.put("TH7", 0.51);
-        THEME_MEDIANS.put("TH8", 0.27);
+        THEME_MEDIANS.put("TH6.3", 1.11);
+        THEME_MEDIANS.put("TH7", 0.39);
+        THEME_MEDIANS.put("TH8", 0.37);
         THEME_MEDIANS.put("TRANSVERSE", 1.61);
     }
 
@@ -149,47 +149,48 @@ public class ResourcePlanningService {
         return report;
     }
 
-    public CapacityAlerts calculateCapacityAlerts(String jql, Map<String, Map<String, Double>> specs, Map<String, Integer> absences, double workingDays) throws IOException {
+    public CapacityAlerts calculateCapacityAlerts(String jql, Map<String, Map<String, Double>> specs, PlanningData planningData) throws IOException {
         CapacityAlerts alerts = new CapacityAlerts();
         Map<String, Integer> themeStock = new HashMap<>();
-        List<String> logsAutres = new ArrayList<>();
 
-        // 1. Récupération du stock Jira
+        // 1. Calcul des jours ouvrés théoriques sur les 4 prochaines semaines (Prévisionnel)
+        final double totalTheoreticalDays = planningData.nextWeeks.size() * 5.0;
+
+        // 2. Récupération du stock Jira
         JSONObject result = searchJira(jql, 0, 1000, null);
         if (result != null && result.has("issues")) {
             JSONArray issues = result.getJSONArray("issues");
             for (int i = 0; i < issues.length(); i++) {
-                JSONObject issue = issues.getJSONObject(i);
-                JSONObject fields = issue.getJSONObject("fields");
-
-                // Utilisation de la logique d'identification (Extended conseillée)
-                String theme = identifyThemeExtended(issue, this);
-
-                if ("AUTRES".equals(theme)) {
-                    logsAutres.add(issue.getString("key") + " : " + fields.optString("summary", "Sans titre"));
-                }
-
+                String theme = identifyThemeExtended(issues.getJSONObject(i), this);
                 themeStock.put(theme, themeStock.getOrDefault(theme, 0) + 1);
             }
         }
 
-        // Affichage des tickets AUTRES dans la console
-        if (!logsAutres.isEmpty()) {
-            System.out.println("\n--- TICKETS CLASSÉS EN 'AUTRES' (SANS LABEL NI MOT-CLÉ) ---");
-            logsAutres.forEach(t -> System.out.println("  [?] " + t));
-            System.out.println("-----------------------------------------------------------\n");
-        }
-
-        // 2. Calcul de la capacité par thème
+        // 3. Calcul de la capacité RÉELLE par thème sur les 4 prochaines semaines
         Map<String, Double> themeCapacity = new HashMap<>();
+
+        System.out.println("\n[i] ANALYSE DE LA DISPONIBILITÉ PRÉVISIONNELLE (4 PROCHAINES SEMAINES) :");
         specs.forEach((login, userSpecs) -> {
-            double daysPresent = workingDays - absences.getOrDefault(login, 0);
+            // Calcul de la présence réelle via un stream (garantit que realDaysPresent est effectively final)
+            final double realDaysPresent = planningData.nextWeeks.stream()
+                    .mapToDouble(weekNum -> 5.0 + planningData.getWeeklyDelta(login, weekNum))
+                    .sum();
+
+            double totalAbsences = totalTheoreticalDays - realDaysPresent;
+            if (totalAbsences > 0) {
+                System.out.format("  > %-10s : %2.1fj d'absence prévue -> Dispo réelle: %2.1fj%n",
+                        login, totalAbsences, realDaysPresent);
+            }
+
             userSpecs.forEach((theme, pct) -> {
-                themeCapacity.merge(theme, daysPresent * (pct / 100.0), Double::sum);
+                themeCapacity.merge(theme, realDaysPresent * (pct / 100.0), Double::sum);
             });
         });
 
+        // 4. Calcul de la tension par thème
         List<SufferingTheme> allThemes = new ArrayList<>();
+        System.out.println("\n[i] BILAN CHARGE / CAPACITÉ (FUTUR PROCHE) :");
+
         themeStock.keySet().stream()
                 .filter(t -> !"TH18".equals(t))
                 .forEach(theme -> {
@@ -199,27 +200,25 @@ public class ResourcePlanningService {
                     double capacite = themeCapacity.getOrDefault(theme, 0.0);
 
                     double tension = (capacite > 0) ? chargeEstimee / capacite : (chargeEstimee > 0 ? 99.0 : 0.0);
-                    double extraResources = (chargeEstimee - capacite) / workingDays;
+                    // ExtraResources en ETP (Équivalent Temps Plein manquant ou en surplus)
+                    double extraResources = (chargeEstimee - capacite) / totalTheoreticalDays;
 
                     allThemes.add(new SufferingTheme(theme, tension, count, extraResources));
 
-                    System.out.format("Thème: %-15s | Stock: %2d | Poids: %.2fj | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Extra: %+.2f res%n",
-                            theme, count, mediane, chargeEstimee, capacite, tension, extraResources);
+                    System.out.format("  %-15s | Stock: %2d | Charge: %4.1fj | Capa: %4.1fj | Coef: %4.2fx | Besoin: %+.2f ETP%n",
+                            theme, count, chargeEstimee, capacite, tension, extraResources);
                 });
 
-        // 3. TOP 3 SURCHARGE
+        // 5. Alertes (Seuils : Surcharge > 1.15 / Sous-charge < 0.85)
         alerts.underCapacity = allThemes.stream()
-                .filter(t -> t.getTicketCount() >= 3 && (t.getTension() > 1.1 || t.getTension() == 99.0))
+                .filter(t -> t.getTicketCount() >= 2 && (t.getTension() > 1.15 || t.getTension() == 99.0))
                 .sorted(Comparator.comparingDouble(SufferingTheme::getExtraResources).reversed())
-                .limit(3)
-                .collect(Collectors.toList());
+                .limit(3).collect(Collectors.toList());
 
-        // 4. TOP 3 DISPONIBILITÉ
         alerts.overCapacity = allThemes.stream()
-                .filter(t -> t.getTension() < 1.0)
+                .filter(t -> t.getTension() < 0.85)
                 .sorted(Comparator.comparingDouble(SufferingTheme::getExtraResources))
-                .limit(3)
-                .collect(Collectors.toList());
+                .limit(3).collect(Collectors.toList());
 
         return alerts;
     }

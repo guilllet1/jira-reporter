@@ -1,11 +1,11 @@
 package com.codix.tools.internalreport;
 
+import com.codix.tools.AppConfig;
 import com.codix.tools.locamreport.JiraService;
 import com.codix.tools.btteamreport.ResourcePlanningService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -14,33 +14,36 @@ import java.util.*;
 public class DuplicateThemeReportApp {
 
     public static void main(String[] args) {
-        try {
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Bloc d'initialisation obligatoire (UTF-8)
+        try { 
+            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
+            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
+        } catch (Exception e) { 
+            e.printStackTrace(); 
         }
 
         try {
-            Properties props = new Properties();
-            try (FileInputStream fis = new FileInputStream("config.properties")) {
-                props.load(fis);
+            // Utilisation du Singleton AppConfig
+            AppConfig config = AppConfig.getInstance();
+            
+            String jiraApiUrl = config.getJiraBaseUrl();
+            String jiraToken = config.getApiToken();
+
+            if (jiraToken == null || jiraApiUrl == null) {
+                System.err.println("ERREUR : Configuration Jira incomplète (URL ou Token manquant).");
+                return;
             }
 
-            String jiraApiUrl = props.getProperty("jira.url");
-            String jiraToken = props.getProperty("jira.token");
-
-            // Nettoyage de l'URL pour les liens de navigation (suppression du chemin API)
+            // Nettoyage de l'URL pour les liens de navigation
             String jiraBaseUrl = jiraApiUrl.contains("/rest/") ? jiraApiUrl.split("/rest/")[0] : jiraApiUrl;
 
             JiraService jiraService = new JiraService(jiraApiUrl, jiraToken);
 
-            // Nouveau JQL incluant le filtre sur la mise à jour client
+            // JQL et paramètres de sortie
             String jql = "project = LOCAMWEB AND created >= '2025-06-01' and \"Reopened/Updated by Client\" is not EMPTY ORDER BY created DESC";
             String filename = "DASHBOARD_CLEANUP.html";
 
             System.out.println("Analyse des tickets LOCAMWEB...");
-            // On force la récupération des champs summary et labels
             JSONObject response = jiraService.searchJira(jql, 1000, "summary,labels");
 
             if (response == null || !response.has("issues")) {
@@ -60,8 +63,6 @@ public class DuplicateThemeReportApp {
                 JSONObject fields = issue.optJSONObject("fields");
                 if (fields == null) continue;
 
-                
-                // Récupération du titre (summary) sans passer par optString pour éviter le N/A par défaut
                 String summary = fields.has("summary") && !fields.isNull("summary") ? fields.getString("summary") : "Sans titre";
                 
                 JSONArray labels = fields.optJSONArray("labels");
@@ -93,13 +94,10 @@ public class DuplicateThemeReportApp {
             html.append("table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }");
             html.append("th, td { border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: middle; }");
             html.append("th { background-color: #4a90e2; color: white; }");
-            
-            // Logique de liens (JiraHtmlReport)
             html.append("a { color: #4a90e2; text-decoration: none; font-weight: bold; }");
             html.append("a:visited { color: #4a90e2; }");
             html.append("a:hover { text-decoration: underline; }");
             html.append(".clicked-link { color: #8e44ad !important; }");
-            
             html.append(".badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-right: 5px; display: inline-block; }");
             html.append(".badge-theme { background: #e8f4fd; color: #2b5797; border: 1px solid #d0e1f9; }");
             html.append("</style></head><body>");
@@ -107,15 +105,12 @@ public class DuplicateThemeReportApp {
             html.append("<h1>Analyse Thématique - LOCAMWEB</h1>");
             html.append("<p>Tickets créés depuis le 01/06/2025 avec mise à jour client identifiée.</p>");
 
-            // Section 1 : Doublons
             html.append("<h2>1. Tickets avec Thèmes en Double (").append(duplicates.size()).append(")</h2>");
             renderTable(html, duplicates, jiraBaseUrl, true);
 
-            // Section 2 : Sans thème
             html.append("<h2>2. Tickets sans Thème identifié (").append(noThemes.size()).append(")</h2>");
             renderTable(html, noThemes, jiraBaseUrl, false);
 
-            // Scripts pour le suivi des clics
             html.append("<script>");
             html.append("document.addEventListener('DOMContentLoaded', function() {");
             html.append("  document.querySelectorAll('a.track-click').forEach(function(link) {");
