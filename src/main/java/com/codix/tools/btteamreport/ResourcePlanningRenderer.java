@@ -18,10 +18,12 @@ public class ResourcePlanningRenderer {
 
     public void generate(ResourcePlanningService.ReportData data, ResourcePlanningService.CapacityAlerts alerts, String filename) {
         // Initialisation obligatoire pour le support UTF-8 (Consigne utilisateur)
-        try { 
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
-        } catch (Exception e) { e.printStackTrace(); }
+        try {
+            System.setOut(new PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new PrintStream(System.err, true, "UTF-8"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         StringBuilder html = new StringBuilder();
         String dateGeneration = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());

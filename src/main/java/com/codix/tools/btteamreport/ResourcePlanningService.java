@@ -619,7 +619,7 @@ public class ResourcePlanningService {
                     if (html != null) {
                         // Sauvegarde de la page HTML
                         Path logFile = logDir.resolve("hr_" + monthKey + ".html");
-                        Files.writeString(logFile, html, StandardCharsets.UTF_8);
+                        Files.write(logFile, html.getBytes(StandardCharsets.UTF_8));
 
                         // LOG DE DÉBOGAGE
                         if (html.length() < 500) {
