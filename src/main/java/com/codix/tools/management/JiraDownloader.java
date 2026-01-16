@@ -48,12 +48,12 @@ public class JiraDownloader {
     }
 
     public static void main(String[] args) {
-        // Bloc d'initialisation obligatoire (UTF-8)
-        try { 
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
-        } catch (Exception e) { 
-            e.printStackTrace(); 
+        try {
+            // Utilisation de "UTF-8" (String) au lieu de StandardCharsets pour la compatibilité Java 8
+            System.setOut(new PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new PrintStream(System.err, true, "UTF-8"));
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         // Récupération de l'instance unique de configuration
@@ -66,10 +66,10 @@ public class JiraDownloader {
         }
 
         if (config.isDebugMode()) {
-            try {
-                Path logPath = Paths.get(LOG_DIR);
-                if (!Files.exists(logPath)) Files.createDirectories(logPath);
-            } catch (Exception e) { System.err.println("Erreur log: " + e.getMessage()); }
+            java.io.File logDir = new java.io.File(LOG_DIR);
+            if (!logDir.exists()) {
+                logDir.mkdirs();
+            }
         }
 
         HttpClient client = HttpClient.newBuilder()

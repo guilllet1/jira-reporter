@@ -14,12 +14,12 @@ import java.util.*;
 public class DuplicateThemeReportApp {
 
     public static void main(String[] args) {
-        // Bloc d'initialisation obligatoire (UTF-8)
-        try { 
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8)); 
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8)); 
-        } catch (Exception e) { 
-            e.printStackTrace(); 
+        try {
+            // Utilisation de "UTF-8" (String) au lieu de StandardCharsets pour la compatibilité Java 8
+            System.setOut(new PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new PrintStream(System.err, true, "UTF-8"));
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         try {
@@ -119,7 +119,8 @@ public class DuplicateThemeReportApp {
             html.append("});");
             html.append("</script></body></html>");
 
-            try (FileWriter fw = new FileWriter(filename, StandardCharsets.UTF_8)) {
+            // Remplacement compatible Java 8 pour FileWriter avec Charset
+            try (java.io.Writer fw = new java.io.OutputStreamWriter(new java.io.FileOutputStream(filename), "UTF-8")) {
                 fw.write(html.toString());
                 System.out.println("Rapport généré : " + filename + " (" + (duplicates.size() + noThemes.size()) + " tickets)");
             }

@@ -330,19 +330,29 @@ public class JiraService {
     }
 
     public JSONObject searchJira(String jql, int maxResults, String expand) throws IOException {
-        // Ajout des champs created, customfield_12701 et customfield_13600
-        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8)
+        // En Java 8, URLEncoder.encode prend une String pour l'encodage et peut lever une exception
+        String encodedJql;
+        try {
+            encodedJql = URLEncoder.encode(jql, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            // UTF-8 est toujours supporté, mais Java 8 oblige à gérer l'exception
+            throw new IOException("Erreur d'encodage UTF-8", e);
+        }
+
+        String url = jiraUrl + "search?jql=" + encodedJql
                 + "&maxResults=" + maxResults
                 + "&fields=status,labels,created,customfield_12701,customfield_13600,summary";
 
         if (expand != null) {
             url += "&expand=" + expand;
         }
+        
         Request request = new Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer " + token)
                 .addHeader("Content-Type", "application/json")
                 .build();
+                
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 return null;

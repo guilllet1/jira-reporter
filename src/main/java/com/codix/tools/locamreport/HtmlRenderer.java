@@ -1,11 +1,13 @@
 package com.codix.tools.locamreport;
 
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import javax.net.ssl.*;
+import java.security.cert.X509Certificate;
+import java.security.SecureRandom;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class HtmlRenderer {
 
@@ -148,22 +150,75 @@ public class HtmlRenderer {
         appendScripts(html, domainStats, history, categoryHistory, dateFile);
         html.append("</body></html>");
 
-        try (FileWriter writer = new FileWriter(filename)) {
+        try (java.io.Writer writer = new java.io.OutputStreamWriter(new java.io.FileOutputStream(filename), "UTF-8")) {
             writer.write(html.toString());
-        } catch (IOException e) {
+        } catch (java.io.IOException e) {
             e.printStackTrace();
         }
     }
 
     private String getBase64Image(String imageUrl) {
         try {
+            // 1. Configuration d'un contexte SSL qui fait confiance à tout le monde
+            TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return null; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                }
+            };
+
+            SSLContext sc = SSLContext.getInstance("SSL");
+            sc.init(null, trustAllCerts, new SecureRandom());
+
+            // 2. Connexion
             URL url = new URL(imageUrl);
-            try (InputStream is = url.openStream()) {
-                byte[] bytes = is.readAllBytes();
-                String mimeType = imageUrl.contains(".svg") ? "image/svg+xml" : "image/png";
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            
+            // Appliquer le contexte SSL permissif si c'est du HTTPS
+            if (connection instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) connection).setSSLSocketFactory(sc.getSocketFactory());
+                // Ignorer aussi la vérification du nom de domaine
+                ((HttpsURLConnection) connection).setHostnameVerifier(new HostnameVerifier() {
+                    public boolean verify(String hostname, SSLSession session) { return true; }
+                });
+            }
+
+            // Simuler un navigateur
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+
+            // 3. Lecture du flux (Compatible Java 8)
+            try (InputStream is = connection.getInputStream()) {
+                java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+                int nRead;
+                byte[] data = new byte[16384];
+
+                while ((nRead = is.read(data, 0, data.length)) != -1) {
+                    buffer.write(data, 0, nRead);
+                }
+
+                byte[] bytes = buffer.toByteArray();
+
+                // Détection simple du type
+                String mimeType = "image/png";
+                if (imageUrl.toLowerCase().endsWith(".webp")) {
+                    mimeType = "image/webp";
+                } else if (imageUrl.toLowerCase().endsWith(".svg")) {
+                    mimeType = "image/svg+xml";
+                } else if (imageUrl.toLowerCase().endsWith(".jpg") || imageUrl.toLowerCase().endsWith(".jpeg")) {
+                    mimeType = "image/jpeg";
+                }
+
                 return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
             }
-        } catch (Exception e) { return imageUrl; }
+
+        } catch (Exception e) {
+            System.err.println("Erreur chargement logo (" + imageUrl + ") : " + e.getMessage());
+            // En cas d'erreur, on retourne une image vide transparente pour ne pas casser le HTML
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+        }
     }
 
     private String cell(int val, int max) {

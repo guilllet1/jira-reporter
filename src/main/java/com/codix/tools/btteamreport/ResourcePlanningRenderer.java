@@ -74,14 +74,20 @@ public class ResourcePlanningRenderer {
         appendCopyScript(html);
         html.append("</div></body></html>");
 
-        try (FileWriter writer = new FileWriter(filename)) { writer.write(html.toString()); } 
-        catch (IOException e) { e.printStackTrace(); }
+        try (java.io.Writer writer = new java.io.OutputStreamWriter(new java.io.FileOutputStream(filename), "UTF-8")) {
+            writer.write(html.toString());
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void appendDetailTable(StringBuilder html, PlanningData data) {
         Map<Integer, Double> totalTimeWeek = new LinkedHashMap<>();
         Map<Integer, Integer> totalAssignedWeek = new LinkedHashMap<>();
-        for (Integer w : data.weeks) { totalTimeWeek.put(w, 0.0); totalAssignedWeek.put(w, 0); }
+        for (Integer w : data.weeks) {
+            totalTimeWeek.put(w, 0.0);
+            totalAssignedWeek.put(w, 0);
+        }
 
         for (ResourcePlanningService.UserStats u : data.userStats.values()) {
             for (Integer w : data.weeks) {

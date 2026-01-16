@@ -242,7 +242,7 @@ public class ResourcePlanningService {
      * 2. Thème des tickets liés (is a prerequisite for / depends on issue) 3.
      * Mots-clés et patterns dans le titre (Summary)
      */
-    private String identifyThemeExtended(JSONObject issue, ResourcePlanningService service) {
+    public String identifyThemeExtended(JSONObject issue, ResourcePlanningService service) {
         JSONObject fields = issue.getJSONObject("fields");
 
         // 1. Recherche par labels (Logique standard)
@@ -489,14 +489,42 @@ public class ResourcePlanningService {
         }
     }
 
+    // Version compatible Java 8
     private JSONObject searchJira(String jql, int startAt, int maxResults, String expand) throws IOException {
-        String url = jiraUrl + "search?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8) + "&startAt=" + startAt + "&maxResults=" + maxResults + "&fields=status,assignee,timespent,labels";
+        String encodedJql;
+        try {
+            // Java 8 exige une String ("UTF-8") et non StandardCharsets.UTF_8
+            encodedJql = URLEncoder.encode(jql, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new IOException("Encodage UTF-8 non supporté", e);
+        }
+
+        // Construction de l'URL (vérifiez si vous devez ajouter "/rest/api/2/" ou si c'est déjà dans jiraUrl)
+        // Par précaution, cette construction gère le slash final
+        String baseUrl = jiraUrl.endsWith("/") ? jiraUrl : jiraUrl + "/";
+        if (!baseUrl.contains("/rest/api/")) {
+            baseUrl += "rest/api/2/";
+        }
+        
+        String url = baseUrl + "search?jql=" + encodedJql 
+                   + "&startAt=" + startAt 
+                   + "&maxResults=" + maxResults;
+
         if (expand != null) {
             url += "&expand=" + expand;
         }
-        Request request = new Request.Builder().url(url).addHeader("Authorization", "Bearer " + token).build();
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer " + token)
+                .build();
+
         try (Response response = client.newCall(request).execute()) {
-            return response.isSuccessful() ? new JSONObject(response.body().string()) : null;
+            if (!response.isSuccessful()) {
+                // En cas d'erreur (ex: 400 Bad Request), on retourne null ou on logue l'erreur
+                return null;
+            }
+            return new JSONObject(response.body().string());
         }
     }
 

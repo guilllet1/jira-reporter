@@ -150,7 +150,8 @@ public class JiraHtmlReport {
         html.append("</body></html>");
 
         try {
-            Files.writeString(Paths.get(filename), html.toString(), StandardCharsets.UTF_8);
+            // Remplacement de Files.writeString par Files.write
+            java.nio.file.Files.write(java.nio.file.Paths.get(filename), html.toString().getBytes("UTF-8"));
             System.out.println("Fichier HTML généré : " + filename);
         } catch (Exception e) {
             System.err.println("Erreur génération HTML: " + e.getMessage());

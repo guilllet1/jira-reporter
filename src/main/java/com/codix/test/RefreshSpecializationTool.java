@@ -41,9 +41,12 @@ public class RefreshSpecializationTool {
 
     public static void main(String[] args) {
         try {
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception e) { e.printStackTrace(); }
+            // Utilisation de "UTF-8" (String) au lieu de StandardCharsets pour la compatibilité Java 8
+            System.setOut(new PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new PrintStream(System.err, true, "UTF-8"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         try {
             Properties props = new Properties();
@@ -157,37 +160,42 @@ public class RefreshSpecializationTool {
     }
 
     private static void printGeneratedCode(Map<String, Map<String, Long>> userActivity) {
-        System.out.println("private static Map<String, Map<String, Double>> getTeamSpecialization() {");
-        System.out.println("    Map<String, Map<String, Double>> specs = new HashMap<>();\n");
+    System.out.println("private static Map<String, Map<String, Double>> getTeamSpecialization() {");
+    System.out.println("    Map<String, Map<String, Double>> specs = new HashMap<>();");
+    System.out.println("    Map<String, Double> s; // Variable temporaire pour alléger le code\n");
 
-        userActivity.keySet().stream().sorted().forEach(login -> {
-            Map<String, Long> activities = userActivity.get(login);
-            long totalTime = activities.values().stream().mapToLong(Long::longValue).sum();
-            Map<String, Double> locamSpecs = new LinkedHashMap<>();
-            activities.entrySet().stream()
-                    .filter(e -> e.getKey().startsWith("TH") || e.getKey().equals("AD") || e.getKey().equals("GED") || e.getKey().equals("ELLISPHERE") || e.getKey().equals("AUTRES") || e.getKey().equals("TRANSVERSE"))
-                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                    .forEach(e -> {
-                        double pct = (e.getValue() * 100.0) / totalTime;
-                        if (pct >= 1.0) locamSpecs.put(e.getKey(), Math.round(pct * 10.0) / 10.0);
-                    });
+    userActivity.keySet().stream().sorted().forEach(login -> {
+        Map<String, Long> activities = userActivity.get(login);
+        long totalTime = activities.values().stream().mapToLong(Long::longValue).sum();
+        if (totalTime == 0) return;
 
-            if (!locamSpecs.isEmpty()) {
-                if (locamSpecs.size() > 10) {
-                    System.out.println("    specs.put(\"" + login + "\", Map.ofEntries(");
-                    String entries = locamSpecs.entrySet().stream()
-                            .map(e -> "        Map.entry(\"" + e.getKey() + "\", " + e.getValue() + ")")
-                            .collect(Collectors.joining(",\n"));
-                    System.out.println(entries + "\n    ));");
-                } else {
-                    String entries = locamSpecs.entrySet().stream().map(e -> "\"" + e.getKey() + "\", " + e.getValue()).collect(Collectors.joining(", "));
-                    System.out.println("    specs.put(\"" + login + "\", Map.of(" + entries + "));");
-                }
-            }
-        });
-        System.out.println("\n    return specs;");
-        System.out.println("}");
-    }
+        // Filtrage des clés, calcul des pourcentages et tri par valeur décroissante
+        String putStatements = activities.entrySet().stream()
+                .filter(e -> e.getKey().startsWith("TH") || 
+                             e.getKey().equals("AD") || 
+                             e.getKey().equals("GED") || 
+                             e.getKey().equals("ELLISPHERE") || 
+                             e.getKey().equals("AUTRES") || 
+                             e.getKey().equals("TRANSVERSE"))
+                .map(e -> {
+                    double pct = (e.getValue() * 100.0) / totalTime;
+                    double roundedPct = Math.round(pct * 10.0) / 10.0;
+                    return Map.entry(e.getKey(), roundedPct);
+                })
+                .filter(e -> e.getValue() >= 1.0)
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .map(e -> "s.put(\"" + e.getKey() + "\", " + e.getValue() + ");")
+                .collect(Collectors.joining(" "));
+
+        if (!putStatements.isEmpty()) {
+            System.out.println("        s = new HashMap<>(); " + putStatements);
+            System.out.println("        specs.put(\"" + login + "\", s);\n");
+        }
+    });
+
+    System.out.println("        return specs;");
+    System.out.println("}");
+}
 
     private static void printSummaryTable(Map<String, Map<String, Long>> userActivity) {
         System.out.format("%-15s | %-12s | %-15s | %-20s%n", "LOGIN", "% LOCAM", "% EXTERNE", "PROJETS EXT. MAJEURS");
